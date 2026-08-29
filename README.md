@@ -27,8 +27,10 @@ bme280-observatory/
 ├── scripts/
 │   ├── probe_bme280_ch341t_v3.py  # Hardware diagnostic: CH341T_V3 + BME280
 │   ├── run_observatory.bat        # Windows launcher (NYX)
-│   ├── setup.sh                   # Linux setup (reference)
-│   └── bme280-*.service           # systemd units (reference)
+│   ├── run_sensor_task.bat        # Task Scheduler launcher
+│   ├── install_task.bat           # Register scheduled task
+│   ├── uninstall_task.bat         # Remove scheduled task
+│   └── bme280-observatory.xml     # Task Scheduler task definition
 ├── requirements/
 │   └── requirements.txt
 └── README.md
