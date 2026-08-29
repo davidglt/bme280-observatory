@@ -1,0 +1,42 @@
+# Ejemplos de automatizaciones útiles para el observatorio
+
+# 1. Alerta si la humedad supera el umbral de riesgo (>85%)
+- alias: "Observatorio: alerta humedad alta"
+  id: observatory_high_humidity_alert
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.observatorio_humedad
+      above: 85
+      for:
+        minutes: 5
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "⚠️ Observatorio – Humedad alta"
+        message: >-
+          Humedad: {{ states('sensor.observatorio_humedad') }}%.
+          Considera cerrar el observatorio.
+
+# 2. Alerta si la temperatura baja del punto de rocío + 3°C (riesgo de condensación)
+# Requiere sensor de punto de rocío calculado en HA o en el script
+- alias: "Observatorio: riesgo de condensación"
+  id: observatory_dew_risk
+  trigger:
+    - platform: template
+      value_template: >-
+        {%- set t = states('sensor.observatorio_temperatura') | float(99) %}
+        {%- set rh = states('sensor.observatorio_humedad') | float(0) %}
+        {%- if rh > 0 and t < 99 %}
+          {%- set a = 17.625 %}
+          {%- set b = 243.04 %}
+          {%- import 'math' as math %}
+          {%- set dp = b * (log(rh/100) + a*t/(b+t)) / (a - (log(rh/100) + a*t/(b+t))) %}
+          {{ (t - dp) < 3 }}
+        {%- else %}false{%- endif %}
+      for:
+        minutes: 3
+  action:
+    - service: notify.mobile_app
+      data:
+        title: "🌫️ Observatorio – Riesgo de rocío"
+        message: "La temperatura se acerca al punto de rocío. Revisa el observatorio."

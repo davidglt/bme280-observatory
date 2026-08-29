@@ -1,0 +1,8 @@
+# BME280 Observatory – dependencias Python
+smbus2>=0.4.3
+bme280>=0.0.1
+paho-mqtt>=2.0.0
+requests>=2.31.0
+configparser>=5.3.0
+scheduler>=0.8.0
+flask>=3.0.0          # para el servidor ASCOM Alpaca

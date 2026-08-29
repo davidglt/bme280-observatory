@@ -1,0 +1,22 @@
+# Fragmento para persistir los sensores del observatorio en InfluxDB 2.x
+# Referencia: https://www.home-assistant.io/integrations/influxdb/
+#
+# En configuration.yaml añade:
+#   influxdb: !include influxdb.yaml
+
+api_version: 2
+host: localhost
+port: 8086
+token: !secret influxdb_token
+organization: mi_organizacion
+bucket: observatory
+
+include:
+  entity_globs:
+    - sensor.observatorio_*
+
+default_measurement: sensor
+
+tags:
+  location: observatory
+  sensor: bme280

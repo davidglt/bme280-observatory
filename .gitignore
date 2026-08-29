@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Config con credenciales
+sensor/config.ini
+homeassistant/secrets.yaml
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
