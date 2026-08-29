@@ -111,7 +111,6 @@ En SharpCap → **Tools → Observing Conditions → Custom HTTP Source** → `h
 Ver `requirements/requirements.txt`. Principales:
 - `i2cpy` — comunicación I²C con CH341T_V3
 - `paho-mqtt` — cliente MQTT
-- `Flask` — servidor HTTP para SharpCap
 
 ## Licencia
 
