@@ -1,48 +1,48 @@
 # BME280 Observatory — NYX Windows 11 + CH341T_V3
 
-Lectura de temperatura, humedad y presión desde un sensor **BME280** conectado vía **I²C** al adaptador **CH341T_V3** (USB→I²C) en **Windows 11 (NYX)**. Publica los datos por **MQTT** a **Home Assistant** y los expone como canal personalizado en **SharpCap** (Observing Conditions).
+Reads temperature, humidity, and pressure from a **BME280** sensor connected via **I²C** to a **CH341T_V3** (USB→I²C) adapter on **Windows 11 (NYX)**. Publishes data over **MQTT** to **Home Assistant** and exposes it as a custom channel in **SharpCap** (Observing Conditions).
 
-## Hardware requerido
+## Required Hardware
 
-| Componente | Descripción |
+| Component | Description |
 |---|---|
-| Sensor | BME280 en módulo GY-BMEP 4 pines (I²C, dirección 0x76) |
-| Adaptador USB | CH341T_V3 (USB→I²C, driver CH341PAR_INST.EXE) |
+| Sensor | BME280 on GY-BMEP 4-pin module (I²C, address 0x76) |
+| USB Adapter | CH341T_V3 (USB→I²C, driver CH341PAR_INST.EXE) |
 | PC | Windows 11 — NYX |
-| Red | Broker MQTT (Mosquitto en Home Assistant o externo) |
+| Network | MQTT broker (Mosquitto on Home Assistant or standalone) |
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 bme280-observatory/
 ├── sensor/
-│   ├── bme280_ch341t_v3.py     # Lectura BME280 vía CH341T_V3 + publicación MQTT
-│   ├── bme280_ascom.py         # Servidor ASCOM ObservingConditions
-│   ├── bme280_mqtt.py          # Loop MQTT independiente
-│   └── config.example.ini      # Plantilla de configuración
+│   ├── bme280_ch341t_v3.py     # BME280 reading via CH341T_V3 + MQTT publishing
+│   ├── bme280_ascom.py         # ASCOM ObservingConditions server
+│   ├── bme280_mqtt.py          # Standalone MQTT loop
+│   └── config.example.ini      # Configuration template
 ├── sharpcap/
-│   └── sharpcap_conditions.py  # Endpoint HTTP para SharpCap Observing Conditions
+│   └── sharpcap_conditions.py  # HTTP endpoint for SharpCap Observing Conditions
 ├── homeassistant/
-│   └── configuration.yaml      # Configuración MQTT sensor HA
+│   └── configuration.yaml      # MQTT sensor configuration for HA
 ├── scripts/
-│   ├── probe_bme280_ch341t_v3.py  # Diagnóstico hardware CH341T_V3 + BME280
-│   ├── run_observatory.bat        # Lanzador Windows (NYX)
-│   ├── setup.sh                   # Setup Linux (referencia)
-│   └── bme280-*.service           # Unidades systemd (referencia)
+│   ├── probe_bme280_ch341t_v3.py  # Hardware diagnostic: CH341T_V3 + BME280
+│   ├── run_observatory.bat        # Windows launcher (NYX)
+│   ├── setup.sh                   # Linux setup (reference)
+│   └── bme280-*.service           # systemd units (reference)
 ├── requirements/
 │   └── requirements.txt
 └── README.md
 ```
 
-## Instalación en Windows 11 (NYX)
+## Installation on Windows 11 (NYX)
 
-### 1. Driver CH341T_V3
+### 1. CH341T_V3 Driver
 
-1. Descarga e instala **CH341PAR_INST.EXE** (WCH oficial).
-2. Conecta el adaptador USB; debe aparecer en Administrador de dispositivos → _Controladores de bus USB_ como **CH341T**.
-3. Instala i2cpy: `pip install i2cpy`.
+1. Download and install **CH341PAR_INST.EXE** (official WCH).
+2. Plug in the USB adapter; it should appear in Device Manager → _Universal Serial Bus controllers_ as **CH341T**.
+3. Install i2cpy: `pip install i2cpy`.
 
-### 2. Entorno Python
+### 2. Python Environment
 
 ```powershell
 python -m venv .venv
@@ -50,33 +50,33 @@ python -m venv .venv
 pip install -r requirements/requirements.txt
 ```
 
-### 3. Configuración
+### 3. Configuration
 
-Copia `sensor/config.example.ini` a `sensor/config.ini` y edita los valores de I²C, MQTT y SharpCap.
+Copy `sensor/config.example.ini` to `sensor/config.ini` and edit the I²C, MQTT, and SharpCap values.
 
-### 4. Diagnóstico previo
+### 4. Hardware Diagnostic
 
-Antes de arrancar el servicio, verifica la cadena hardware:
+Before starting the service, verify the hardware chain:
 
 ```powershell
 python scripts\probe_bme280_ch341t_v3.py
 ```
 
-Debe completar las 5 fases (detección, reset, calibración, raw, compensado) sin errores.
+All 5 phases (detection, reset, calibration, raw, compensated) must complete without errors.
 
-### 5. Ejecución
+### 5. Running
 
 ```powershell
 # Manual
 python sensor\bme280_ch341t_v3.py
 
-# Lanzador completo (sensor + SharpCap)
+# Full launcher (sensor + SharpCap)
 scripts\run_observatory.bat
 ```
 
-## Integración MQTT → Home Assistant
+## MQTT → Home Assistant Integration
 
-Agrega en `configuration.yaml` de HA o usa `homeassistant/configuration.yaml`:
+Add to your HA `configuration.yaml` or use `homeassistant/configuration.yaml`:
 
 ```yaml
 mqtt:
@@ -92,9 +92,9 @@ mqtt:
       unit_of_measurement: "hPa"
 ```
 
-## Integración SharpCap
+## SharpCap Integration
 
-SharpCap lee condiciones de observación desde un endpoint HTTP local. El script `sharpcap/sharpcap_conditions.py` levanta un servidor en `http://localhost:5380/conditions` con el formato JSON esperado por SharpCap:
+SharpCap reads observing conditions from a local HTTP endpoint. The `sharpcap/sharpcap_conditions.py` script serves `http://localhost:5380/conditions` with the JSON format expected by SharpCap:
 
 ```json
 {
@@ -104,14 +104,14 @@ SharpCap lee condiciones de observación desde un endpoint HTTP local. El script
 }
 ```
 
-En SharpCap → **Tools → Observing Conditions → Custom HTTP Source** → `http://localhost:5380/conditions`.
+In SharpCap → **Tools → Observing Conditions → Custom HTTP Source** → `http://localhost:5380/conditions`.
 
-## Dependencias
+## Dependencies
 
-Ver `requirements/requirements.txt`. Principales:
-- `i2cpy` — comunicación I²C con CH341T_V3
-- `paho-mqtt` — cliente MQTT
+See `requirements/requirements.txt`. Main packages:
+- `i2cpy` — I²C communication with CH341T_V3
+- `paho-mqtt` — MQTT client
 
-## Licencia
+## License
 
 GPL-3.0-or-later — David González López-Tercero
