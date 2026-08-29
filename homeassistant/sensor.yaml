@@ -1,25 +1,27 @@
 # Home Assistant MQTT sensor configuration
-# Add under mqtt: in configuration.yaml, or include via !include
+# Patron de topics: homeassistant/<location>/<measurement>
+# Consistente con los sensores del sotano (homeassistant/basement/...)
+# Anadir bajo mqtt: en configuration.yaml, o incluir via !include
 
 mqtt:
   sensor:
-    - name: "Observatory Temperature"
-      unique_id: observatory_bme280_temperature
-      state_topic: "observatory/bme280/temperature"
-      unit_of_measurement: "°C"
+    - name: observatory_temperature
+      unique_id: "observatory_temperature"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/temperature"
       device_class: temperature
-      icon: mdi:thermometer
+      unit_of_measurement: "\xb0C"
 
-    - name: "Observatory Humidity"
-      unique_id: observatory_bme280_humidity
-      state_topic: "observatory/bme280/humidity"
-      unit_of_measurement: "%"
+    - name: observatory_humidity
+      unique_id: "observatory_humidity"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/humidity"
       device_class: humidity
-      icon: mdi:water-percent
+      unit_of_measurement: "%"
 
-    - name: "Observatory Pressure"
-      unique_id: observatory_bme280_pressure
-      state_topic: "observatory/bme280/pressure"
-      unit_of_measurement: "hPa"
+    - name: observatory_pressure
+      unique_id: "observatory_pressure"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/pressure"
       device_class: pressure
-      icon: mdi:gauge
+      unit_of_measurement: "hPa"
