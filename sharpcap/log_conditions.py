@@ -10,10 +10,12 @@
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
 #   - Always appends to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
-#   - Only appends to session CSV if SharpCap has already created today's folder:
-#       <CaptureFolder>\YYYY-MM-DD\sharpcap_conditions.csv
-#     The date is checked on every tick: if midnight passes and SharpCap creates
-#     a new YYYY-MM-DD folder, the logger switches to the new one automatically.
+#   - Appends to session CSV following these rules:
+#       1. Checks if SharpCap has created a folder for today (YYYY-MM-DD).
+#          If yes, switches to it (logs the change once).
+#       2. If no folder exists for today but a previous session folder is known,
+#          keeps writing there until SharpCap creates a new one.
+#       3. If no session folder has ever been found, logs to console only.
 #     This script never creates folders.
 #
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
@@ -42,12 +44,11 @@ _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure
 _SAMPLE_INTERVAL_S = 60
 
 
-def _capture_csv():
-    """Return the session CSV path if SharpCap has created today's folder.
+def _today_capture_csv():
+    """Return the CSV path for today's SharpCap folder if it already exists.
 
-    The date is evaluated on every call so midnight rollovers are handled
-    automatically. Returns None (and never creates any folder) if today's
-    dated subfolder does not exist yet.
+    Returns None if the folder hasn't been created by SharpCap yet.
+    Never creates any folder.
     """
     try:
         root = SharpCap.CaptureFolder
@@ -171,21 +172,23 @@ def _sampling_loop():
     _info("Session CSV : waiting for SharpCap to create today's folder")
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
-    _last_capture_csv = None
+    # Tracks the CSV we are currently writing to.
+    # Starts as None; once set, keeps its value until SharpCap creates a
+    # newer dated folder — even across midnight.
+    _active_csv = None
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
-            capture_csv = _capture_csv()
-            if capture_csv != _last_capture_csv:
-                if capture_csv:
-                    _info("Session CSV: %s" % capture_csv)
-                else:
-                    _info("Session CSV: folder gone — repo only from now.")
-                _last_capture_csv = capture_csv
-            if capture_csv:
-                _append_csv(capture_csv, row)
+            # Check if SharpCap has created a new folder for today
+            today_csv = _today_capture_csv()
+            if today_csv and today_csv != _active_csv:
+                # SharpCap created (or we just noticed) today's folder
+                _info("Session CSV: %s" % today_csv)
+                _active_csv = today_csv
+            if _active_csv:
+                _append_csv(_active_csv, row)
                 _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm  [repo+session]" % (
                     reading["temperature_c"],
                     reading["humidity_pct"],
