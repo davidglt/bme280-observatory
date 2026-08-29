@@ -2,7 +2,7 @@
 # Pega este bloque en tu configuration.yaml de Home Assistant
 # o incluye el archivo sensor.yaml con: mqtt: !include sensor.yaml
 #
-# Topics publicados por sensor/bme280_ch341a.py:
+# Topics publicados por sensor/bme280_ch341t_v3.py:
 #   homeassistant/observatory/temperature
 #   homeassistant/observatory/humidity
 #   homeassistant/observatory/pressure

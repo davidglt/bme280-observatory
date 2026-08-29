@@ -16,7 +16,7 @@ Lectura de temperatura, humedad y presión desde un sensor **BME280** conectado 
 ```
 bme280-observatory/
 ├── sensor/
-│   ├── bme280_ch341a.py        # Lectura BME280 vía CH341T_V3 + publicación MQTT
+│   ├── bme280_ch341t_v3.py     # Lectura BME280 vía CH341T_V3 + publicación MQTT
 │   ├── bme280_ascom.py         # Servidor ASCOM ObservingConditions
 │   ├── bme280_mqtt.py          # Loop MQTT independiente
 │   └── config.example.ini      # Plantilla de configuración
@@ -25,10 +25,10 @@ bme280-observatory/
 ├── homeassistant/
 │   └── configuration.yaml      # Configuración MQTT sensor HA
 ├── scripts/
-│   ├── probe_bme280_ch341a.py  # Diagnóstico hardware CH341T_V3 + BME280
-│   ├── run_observatory.bat     # Lanzador Windows (NYX)
-│   ├── setup.sh                # Setup Linux (referencia)
-│   └── bme280-*.service        # Unidades systemd (referencia)
+│   ├── probe_bme280_ch341t_v3.py  # Diagnóstico hardware CH341T_V3 + BME280
+│   ├── run_observatory.bat        # Lanzador Windows (NYX)
+│   ├── setup.sh                   # Setup Linux (referencia)
+│   └── bme280-*.service           # Unidades systemd (referencia)
 ├── requirements/
 │   └── requirements.txt
 └── README.md
@@ -59,7 +59,7 @@ Copia `sensor/config.example.ini` a `sensor/config.ini` y edita los valores de I
 Antes de arrancar el servicio, verifica la cadena hardware:
 
 ```powershell
-python scripts\probe_bme280_ch341a.py
+python scripts\probe_bme280_ch341t_v3.py
 ```
 
 Debe completar las 5 fases (detección, reset, calibración, raw, compensado) sin errores.
@@ -68,7 +68,7 @@ Debe completar las 5 fases (detección, reset, calibración, raw, compensado) si
 
 ```powershell
 # Manual
-python sensor\bme280_ch341a.py
+python sensor\bme280_ch341t_v3.py
 
 # Lanzador completo (sensor + SharpCap)
 scripts\run_observatory.bat

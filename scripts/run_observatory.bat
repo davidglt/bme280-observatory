@@ -4,14 +4,8 @@ REM Starts the sensor reader and SharpCap HTTP server in parallel
 
 SETLOCAL
 SET VENV=%~dp0..\.venv\Scripts\activate.bat
-SET SENSOR=%~dp0..\sensor\bme280_ch341a.py
+SET SENSOR=%~dp0..\sensor\bme280_ch341t_v3.py
 SET SHARPCAP=%~dp0..\sharpcap\sharpcap_conditions.py
-
-IF NOT EXIST "%~dp0..\config.yaml" (
-    echo [ERROR] config.yaml not found. Copy config.example.yaml to config.yaml and edit it.
-    pause
-    exit /b 1
-)
 
 call "%VENV%"
 
