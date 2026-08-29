@@ -1,20 +1,20 @@
 # BME280 Observatory — NYX Windows 11 + CH341T_V3
 
-Reads temperature, humidity, and pressure from a **BME280** sensor connected via **I²C** to a **CH341T_V3** (USB→I²C) adapter on **Windows 11 (NYX)**. Publishes data over **MQTT** to **Home Assistant** and exposes it as a custom channel in **SharpCap** (Observing Conditions).
+Reads temperature, humidity, and pressure from a **BME280** sensor connected via **I2C** to a **CH341T_V3** (USB→I2C) adapter on **Windows 11 (NYX)**. Publishes data over **MQTT** to **Home Assistant** and exposes it as a custom channel in **SharpCap** (Observing Conditions).
 
 ## Required Hardware
 
 | Component | Description |
 |---|---|
-| Sensor | BME280 on GY-BMEP 4-pin module (I²C, address 0x76) |
-| USB Adapter | CH341T_V3 (USB→I²C, driver CH341PAR_INST.EXE) |
+| Sensor | BME280 on GY-BMEP 4-pin module (I2C, address 0x76) |
+| USB Adapter | CH341T_V3 (USB→I2C, driver CH341PAR_INST.EXE) |
 | PC | Windows 11 — NYX |
 | Network | MQTT broker (Mosquitto on Home Assistant or standalone) |
 
 ## Architecture
 
 ```
-┌──────────────┐     I²C/USB     ┌──────────────────────────────┐
+┌──────────────┐     I2C/USB     ┌──────────────────────────────┐
 │   BME280    │◄───────────►│  CH341T_V3 (i2cpy)              │
 │  (0x76)    │             │  bme280_ch341t_v3.py (30 s)   │
 └──────────────┘             └─────────────┬────────────────┘
@@ -103,7 +103,7 @@ pip install -r requirements/requirements.txt
 
 ### 3. Configuration
 
-Copy `sensor/config.example.ini` to `sensor/config.ini` and edit the I²C, MQTT, and SharpCap values.
+Copy `sensor/config.example.ini` to `sensor/config.ini` and edit the I2C, MQTT, and SharpCap values.
 
 ### 4. Hardware Diagnostic
 
@@ -160,7 +160,7 @@ In SharpCap → **Tools → Observing Conditions → Custom HTTP Source** → `h
 ## Dependencies
 
 See `requirements/requirements.txt`. Main packages:
-- `i2cpy` — I²C communication with CH341T_V3
+- `i2cpy` — I2C communication with CH341T_V3
 - `paho-mqtt` — MQTT client
 
 ## License
