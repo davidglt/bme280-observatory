@@ -9,8 +9,8 @@
 # What it does:
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
 #   - Appends one CSV row to:
-#       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log)
-#       Desktop\SharpCap Captures\sharpcap_conditions_<date>.csv  (per-session)
+#       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
+#       Desktop\SharpCap Captures\YYYY-MM-DD\sharpcap_conditions.csv  (junto a las capturas)
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
 #     Type  conditions()  at any time to see the latest reading.
 #
@@ -33,11 +33,24 @@ _REPO_ROOT     = r"C:\astro\bme280-observatory"
 _LATEST_JSON   = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
 _REPO_CSV      = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
 _CAPTURES_ROOT = os.path.join(os.path.expanduser("~"), "Desktop", "SharpCap Captures")
-_SESSION_DATE  = datetime.date.today().strftime("%Y%m%d")
-_SESSION_CSV   = os.path.join(_CAPTURES_ROOT, "sharpcap_conditions_%s.csv" % _SESSION_DATE)
 
 _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
 _SAMPLE_INTERVAL_S = 60
+
+
+def _session_csv():
+    """Return the CSV path for today's SharpCap captures subfolder.
+
+    SharpCap creates  Desktop\SharpCap Captures\YYYY-MM-DD\  for each session.
+    We write our CSV there so conditions data lives alongside the captures.
+    The folder is created if it doesn't exist yet (session started before
+    SharpCap creates it, or no captures taken).
+    """
+    date_folder = datetime.date.today().strftime("%Y-%m-%d")
+    session_dir = os.path.join(_CAPTURES_ROOT, date_folder)
+    os.makedirs(session_dir, exist_ok=True)
+    return os.path.join(session_dir, "sharpcap_conditions.csv")
+
 
 # ---------------------------------------------------------------------------
 # Logging  (same format as ppec_auto_enable.py)
@@ -52,8 +65,8 @@ def _log(level, msg):
     except Exception:
         pass
 
-def _info(msg):  _log("INFO",  msg)
-def _error(msg): _log("ERROR", msg)
+def _info(msg):  _log("INFO",    msg)
+def _error(msg): _log("ERROR",   msg)
 def _warn(msg):  _log("WARNING", msg)
 
 # ---------------------------------------------------------------------------
@@ -145,8 +158,8 @@ def _sampling_loop():
     import time
     _info("=" * 52)
     _info("Observatory Conditions Logger starting...")
-    _info("Repo CSV  : %s" % _REPO_CSV)
-    _info("Session CSV: %s" % _SESSION_CSV)
+    _info("Repo CSV   : %s" % _REPO_CSV)
+    _info("Session dir: %s" % os.path.join(_CAPTURES_ROOT, datetime.date.today().strftime("%Y-%m-%d")))
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
     while True:
@@ -154,7 +167,9 @@ def _sampling_loop():
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
-            _append_csv(_SESSION_CSV, row)
+            # Resolve session CSV on every tick so a midnight rollover
+            # automatically starts writing to the new YYYY-MM-DD folder.
+            _append_csv(_session_csv(), row)
             _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm" % (
                 reading["temperature_c"],
                 reading["humidity_pct"],
