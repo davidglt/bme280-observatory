@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>BME280 Observatory sensor reader via CH341T_V3. Publishes temperature, humidity and pressure to Home Assistant over MQTT.</Description>
+    <Description>BME280 Observatory sensor reader via CH341T_V3. Publishes temperature, humidity and pressure to Home Assistant over MQTT. Output logged to logs\sensor.log.</Description>
     <Author>davidglt</Author>
   </RegistrationInfo>
   <Triggers>
@@ -34,8 +34,7 @@
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\astro\bme280-observatory\.venv\Scripts\python.exe</Command>
-      <Arguments>sensor\bme280_ch341t_v3.py</Arguments>
+      <Command>C:\astro\bme280-observatory\scripts\run_sensor_task.bat</Command>
       <WorkingDirectory>C:\astro\bme280-observatory</WorkingDirectory>
     </Exec>
   </Actions>
