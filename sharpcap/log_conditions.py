@@ -10,10 +10,11 @@
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
 #   - Appends one CSV row to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
-#       Desktop\SharpCap Captures\YYYY-MM-DD\sharpcap_conditions.csv  (junto a las capturas)
+#       <SharpCap.CaptureFolder>\sharpcap_conditions.csv  (junto a las capturas activas)
 #
-#   The session folder (YYYY-MM-DD) is fixed at SharpCap startup, matching
-#   exactly where SharpCap writes its captures for this session.
+#   SharpCap.CaptureFolder is read on every tick, so the CSV always follows
+#   wherever SharpCap is currently writing captures — including mid-session
+#   folder changes or new sessions on a different date.
 #
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
 #     Type  conditions()  at any time to see the latest reading.
@@ -30,21 +31,35 @@ from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 from System.Threading import Thread, ThreadStart, ApartmentState
 
 # ---------------------------------------------------------------------------
-# Paths — session folder fixed once at startup
+# Paths
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT     = r"C:\astro\bme280-observatory"
-_LATEST_JSON   = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
-_REPO_CSV      = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
-_CAPTURES_ROOT = os.path.join(os.path.expanduser("~"), "Desktop", "SharpCap Captures")
-
-# Fixed at import time — same date SharpCap uses for this session's captures.
-_SESSION_DATE  = datetime.date.today().strftime("%Y-%m-%d")
-_SESSION_DIR   = os.path.join(_CAPTURES_ROOT, _SESSION_DATE)
-_SESSION_CSV   = os.path.join(_SESSION_DIR, "sharpcap_conditions.csv")
+_REPO_ROOT         = r"C:\astro\bme280-observatory"
+_LATEST_JSON       = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
+_REPO_CSV          = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
 
 _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
 _SAMPLE_INTERVAL_S = 60
+
+
+def _capture_csv():
+    """Return the CSV path inside SharpCap's current capture folder.
+
+    SharpCap.CaptureFolder always points to the folder where captures are
+    being written right now (e.g. Desktop\SharpCap Captures\2026-08-29).
+    Reading it on every tick means the CSV follows automatically if the
+    folder changes mid-session or on a new date.
+    Returns None if CaptureFolder is not set.
+    """
+    try:
+        folder = SharpCap.CaptureFolder
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+            return os.path.join(folder, "sharpcap_conditions.csv")
+    except Exception:
+        pass
+    return None
+
 
 # ---------------------------------------------------------------------------
 # Logging  (same format as ppec_auto_enable.py)
@@ -152,16 +167,22 @@ def _sampling_loop():
     import time
     _info("=" * 52)
     _info("Observatory Conditions Logger starting...")
-    _info("Repo CSV    : %s" % _REPO_CSV)
-    _info("Session CSV : %s" % _SESSION_CSV)
+    _info("Repo CSV : %s" % _REPO_CSV)
+    _info("Session  : follows SharpCap.CaptureFolder in real time")
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
+    _last_capture_csv = None
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
-            _append_csv(_SESSION_CSV, row)
+            capture_csv = _capture_csv()
+            if capture_csv:
+                if capture_csv != _last_capture_csv:
+                    _info("Session CSV: %s" % capture_csv)
+                    _last_capture_csv = capture_csv
+                _append_csv(capture_csv, row)
             _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm" % (
                 reading["temperature_c"],
                 reading["humidity_pct"],
