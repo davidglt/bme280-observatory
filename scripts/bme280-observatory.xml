@@ -28,13 +28,14 @@
       <Count>10</Count>
     </RestartOnFailure>
     <Enabled>true</Enabled>
-    <Hidden>false</Hidden>
+    <Hidden>true</Hidden>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>C:\astro\bme280-observatory\scripts\run_sensor_task.bat</Command>
+      <Command>C:\Windows\System32\cmd.exe</Command>
+      <Arguments>/c "C:\astro\bme280-observatory\scripts\run_sensor_task.bat"</Arguments>
       <WorkingDirectory>C:\astro\bme280-observatory</WorkingDirectory>
     </Exec>
   </Actions>
