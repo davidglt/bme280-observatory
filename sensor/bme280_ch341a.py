@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: ascii -*-
+# SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 """BME280 reader via CH341A/CH341T USB-I2C adapter on Windows 11 (NYX).
 
-Backend priority (same as probe_bme280_ch341a.py):
-  1. i2cpy  -- high-level CH341 wrapper (pip install i2cpy). Preferred.
-  2. ctypes -- direct calls to CH341DLLA64.DLL. Fallback.
+Uses i2cpy as the sole backend (pip install i2cpy).
 
 Publishes temperature, humidity and pressure to Mosquitto / Home Assistant
 over MQTT.  Configuration via sensor/config.ini (see config.example.ini).
 """
 import configparser
-import ctypes
 import logging
 import os
 import struct
+import sys
 import time
 
 import paho.mqtt.client as mqtt
@@ -27,14 +28,6 @@ DEG = chr(167)
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH         = os.path.join(_ROOT, "config.ini")
 CONFIG_EXAMPLE_PATH = os.path.join(_ROOT, "config.example.ini")
-
-_DLL_CANDIDATES = [
-    "CH341DLLA64.DLL",                                          # NYX / Windows 11 64-bit
-    os.path.join(os.environ.get("WINDIR", r"C:\Windows"),
-                 "System32", "CH341DLLA64.DLL"),
-    "CH341DLL64.dll",
-    "CH341DLL.dll",
-]
 
 
 # ---------------------------------------------------------------------------
@@ -50,15 +43,24 @@ def _load_config() -> configparser.ConfigParser:
 
 
 # ---------------------------------------------------------------------------
-# Backend 1: i2cpy (preferred)
+# Backend: i2cpy (sole backend)
 # ---------------------------------------------------------------------------
 
 class I2CpyBackend:
     """High-level wrapper using i2cpy (pip install i2cpy)."""
 
     def __init__(self):
-        import i2cpy
-        self._i2c = i2cpy.I2C(driver="ch341")
+        try:
+            import i2cpy
+        except ImportError:
+            log.error("i2cpy is not installed. Run: pip install i2cpy")
+            sys.exit(1)
+        try:
+            self._i2c = i2cpy.I2C(driver="ch341")
+        except Exception as exc:
+            log.error("Could not open CH341 device via i2cpy: %s", exc)
+            log.error("Check USB cable and that the CH341 driver is installed.")
+            sys.exit(1)
         log.info("i2cpy backend initialised (CH341 driver)")
 
     def read_reg(self, addr: int, reg: int, length: int) -> bytes:
@@ -74,95 +76,6 @@ class I2CpyBackend:
                 fn()
             except Exception:
                 pass
-
-
-# ---------------------------------------------------------------------------
-# Backend 2: ctypes / CH341DLLA64.DLL (fallback)
-# ---------------------------------------------------------------------------
-
-class CtypesBackend:
-    """Direct DLL calls to CH341DLLA64.DLL."""
-
-    def __init__(self):
-        self._dll = None
-        for name in _DLL_CANDIDATES:
-            try:
-                self._dll = ctypes.WinDLL(name)
-                log.info("CH341 DLL loaded: %s", name)
-                break
-            except OSError:
-                continue
-        if self._dll is None:
-            raise RuntimeError("CH341 DLL not found. Tried: %s" % ", ".join(_DLL_CANDIDATES))
-        self._bind()
-        if not self._dll.CH341OpenDevice(0):
-            raise RuntimeError("Cannot open CH341 device 0. Check USB cable and driver.")
-        self._dll.CH341SetStream(0, 1)   # 1 = 100 kHz standard
-        log.info("CH341 ctypes backend open, I2C 100 kHz")
-
-    def _bind(self) -> None:
-        d = self._dll
-        d.CH341OpenDevice.argtypes  = [ctypes.c_ulong]
-        d.CH341OpenDevice.restype   = ctypes.c_void_p
-        d.CH341CloseDevice.argtypes = [ctypes.c_ulong]
-        d.CH341CloseDevice.restype  = None
-        d.CH341SetStream.argtypes   = [ctypes.c_ulong, ctypes.c_ulong]
-        d.CH341SetStream.restype    = ctypes.c_bool
-        d.CH341ReadI2C.argtypes     = [
-            ctypes.c_ulong, ctypes.c_ubyte, ctypes.c_ubyte,
-            ctypes.POINTER(ctypes.c_ubyte),
-        ]
-        d.CH341ReadI2C.restype      = ctypes.c_bool
-        d.CH341StreamI2C.argtypes   = [
-            ctypes.c_ulong, ctypes.c_ulong,
-            ctypes.POINTER(ctypes.c_ubyte),
-            ctypes.c_ulong,
-            ctypes.POINTER(ctypes.c_ubyte),
-        ]
-        d.CH341StreamI2C.restype    = ctypes.c_bool
-
-    def read_reg(self, addr: int, reg: int, length: int) -> bytes:
-        data = bytearray()
-        for off in range(length):
-            val = ctypes.c_ubyte(0)
-            ok  = self._dll.CH341ReadI2C(
-                0,
-                ctypes.c_ubyte(addr << 1),
-                ctypes.c_ubyte((reg + off) & 0xFF),
-                ctypes.byref(val),
-            )
-            if not ok:
-                raise IOError("CH341ReadI2C failed addr=0x%02X reg=0x%02X" % (addr, reg + off))
-            data.append(val.value)
-        return bytes(data)
-
-    def write_reg(self, addr: int, reg: int, data: bytes) -> None:
-        buf   = bytes([(addr << 1) & 0xFE, reg]) + bytes(data)
-        out   = (ctypes.c_ubyte * len(buf))(*buf)
-        dummy = (ctypes.c_ubyte * 1)()
-        ok    = self._dll.CH341StreamI2C(0, len(buf), out, 0, dummy)
-        if not ok:
-            raise IOError("CH341StreamI2C write failed addr=0x%02X reg=0x%02X" % (addr, reg))
-
-    def close(self) -> None:
-        try:
-            self._dll.CH341CloseDevice(0)
-        except Exception:
-            pass
-
-
-# ---------------------------------------------------------------------------
-# Backend factory
-# ---------------------------------------------------------------------------
-
-def _make_backend():
-    try:
-        return I2CpyBackend()
-    except ImportError:
-        log.info("i2cpy not installed, falling back to ctypes backend")
-    except Exception as exc:
-        log.warning("i2cpy backend failed (%s), falling back to ctypes", exc)
-    return CtypesBackend()
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +198,7 @@ def run() -> None:
     qos      = cfg.getint( "mqtt", "qos",           fallback=1)
     retain   = cfg.getboolean("mqtt", "retain",     fallback=True)
 
-    backend = _make_backend()
+    backend = I2CpyBackend()
     sensor  = BME280(backend, address=address)
 
     client = mqtt.Client(client_id="bme280-observatory")
