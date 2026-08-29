@@ -7,6 +7,3 @@ i2cpy>=0.2.1
 
 # MQTT client -> Mosquitto / Home Assistant
 paho-mqtt>=2.1.0
-
-# HTTP server for SharpCap / ASCOM endpoint
-Flask>=3.1.3
