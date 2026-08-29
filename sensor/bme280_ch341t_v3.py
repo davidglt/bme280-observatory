@@ -22,8 +22,8 @@ import paho.mqtt.client as mqtt
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# Degree symbol: ASCII 167
-DEG = chr(167)
+# Degree symbol: ASCII 176 (U+00B0)
+DEG = chr(176)
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH         = os.path.join(_ROOT, "config.ini")
@@ -127,7 +127,7 @@ class BME280:
         time.sleep(0.1)
 
     def read(self) -> dict:
-        """Return dict: temperature (%sC), humidity (%%), pressure (hPa)."""
+        """Return dict: temperature (degC), humidity (%), pressure (hPa)."""
         self._forced()
         raw  = self._bus.read_reg(self._addr, self.REG_DATA, 8)
         praw = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4)
@@ -201,7 +201,7 @@ def run() -> None:
     backend = I2CpyBackend()
     sensor  = BME280(backend, address=address)
 
-    client = mqtt.Client(client_id="bme280-observatory")
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="bme280-observatory")
     if username:
         client.username_pw_set(username, password)
     client.connect(broker, port, keepalive=60)
