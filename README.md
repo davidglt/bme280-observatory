@@ -11,6 +11,57 @@ Reads temperature, humidity, and pressure from a **BME280** sensor connected via
 | PC | Windows 11 — NYX |
 | Network | MQTT broker (Mosquitto on Home Assistant or standalone) |
 
+## Architecture
+
+```
+┌──────────────┐     I²C/USB     ┌──────────────────────────────┐
+│   BME280    │◄───────────►│  CH341T_V3 (i2cpy)              │
+│  (0x76)    │             │  bme280_ch341t_v3.py (30 s)   │
+└──────────────┘             └─────────────┬────────────────┘
+                                          │
+                   ┌──────────────────┤
+                   │                  │
+                   ▼                  ▼
+          MQTT (paho-mqtt)     HTTP :5380 (http.server)
+          Mosquitto / HA       sharpcap_conditions.py
+               │                      │
+               ▼                      ▼
+        Home Assistant            SharpCap Pro
+        (dashboard,           (Observing Conditions
+         automations)          Custom HTTP Source)
+```
+
+## MQTT Topics
+
+| Topic | Type | Example |
+|---|---|---|
+| `observatory/bme280/temperature` | float | `18.34` |
+| `observatory/bme280/humidity` | float | `72.10` |
+| `observatory/bme280/pressure` | float | `1013.25` (sea level) |
+| `observatory/bme280/dewpoint` | float | `12.45` |
+| `observatory/bme280/status` | JSON | `{"temperature":18.34,…,"timestamp":"2026-08-29T19:15:00+00:00"}` |
+
+## Barometric Correction
+
+Pressure is corrected to sea level using the hypsometric formula:
+
+```
+P_slm = P_obs × exp( altitude / (29.3 × (T°C + 273.15)) )
+```
+
+Set your observatory’s actual altitude in `altitude_m` (`config.ini`).
+
+## Dew Point
+
+Calculated via the Magnus formula:
+
+```
+α  = ln(RH/100) + 17.625×T / (243.04 + T)
+dp = 243.04 × α / (17.625 − α)
+```
+
+Condensation risk appears when `T − dp < 3°C`.
+
 ## Project Structure
 
 ```
