@@ -11,11 +11,12 @@
 #   - Always appends to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
 #   - Appends to session CSV following these rules:
-#       1. Checks if SharpCap has created a folder for today (YYYY-MM-DD).
-#          If yes, switches to it (logs the change once).
-#       2. If no folder exists for today but a previous session folder is known,
-#          keeps writing there until SharpCap creates a new one.
-#       3. If no session folder has ever been found, logs to console only.
+#       1. At startup: only activates if SharpCap has already created TODAY's
+#          folder (YYYY-MM-DD). Folders from previous days are ignored.
+#       2. Once active: keeps writing to the same folder even past midnight,
+#          until SharpCap creates a new folder for the new date.
+#       3. If no session folder exists at startup, logs [repo only] until
+#          SharpCap creates today's folder.
 #     This script never creates folders.
 #
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
@@ -45,9 +46,10 @@ _SAMPLE_INTERVAL_S = 60
 
 
 def _today_capture_csv():
-    """Return the CSV path for today's SharpCap folder if it already exists.
+    """Return the CSV path for TODAY's SharpCap folder if it already exists.
 
-    Returns None if the folder hasn't been created by SharpCap yet.
+    Only matches the current calendar date — folders from previous days
+    are intentionally ignored. Returns None if today's folder doesn't exist.
     Never creates any folder.
     """
     try:
@@ -172,19 +174,18 @@ def _sampling_loop():
     _info("Session CSV : waiting for SharpCap to create today's folder")
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
-    # Tracks the CSV we are currently writing to.
-    # Starts as None; once set, keeps its value until SharpCap creates a
-    # newer dated folder — even across midnight.
+    # _active_csv is None until SharpCap creates today's folder.
+    # Once set it stays valid across midnight until a new dated folder appears.
+    # At startup we never inherit folders from previous days.
     _active_csv = None
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
-            # Check if SharpCap has created a new folder for today
+            # Check if SharpCap has created today's folder (never picks up old dates)
             today_csv = _today_capture_csv()
             if today_csv and today_csv != _active_csv:
-                # SharpCap created (or we just noticed) today's folder
                 _info("Session CSV: %s" % today_csv)
                 _active_csv = today_csv
             if _active_csv:
