@@ -1,0 +1,11 @@
+# Runtime dependencies for bme280-observatory (Windows 11 / NYX)
+# Install with: pip install -r requirements/requirements.txt
+
+# I2C communication with CH341A/CH341T adapter
+i2cpy>=0.1.0
+
+# MQTT client -> Mosquitto / Home Assistant
+paho-mqtt>=1.6.1
+
+# HTTP server for SharpCap / ASCOM endpoint
+Flask>=3.0.0
