@@ -11,39 +11,32 @@
 #   - Appends one CSV row to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log)
 #       Desktop\SharpCap Captures\sharpcap_conditions_<date>.csv  (per-session)
-#   - Adds an "Observatory Conditions" button to the SharpCap toolbar
-#     that shows a dialog with the latest reading on demand
+#   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
+#     Type  conditions()  at any time to see the latest reading.
 #
 # Requires: bme280_ch341t_v3.py running as a background service (Task Scheduler)
 
 import clr
 import json
 import os
-import sys
 import datetime
 
 clr.AddReference("System.Windows.Forms")
-clr.AddReference("System.Drawing")
-
-from System.Windows.Forms import (
-    MessageBox, MessageBoxButtons, MessageBoxIcon,
-    ToolStripButton,
-)
-from System.Drawing import Image
+from System.Windows.Forms import MessageBox, MessageBoxButtons, MessageBoxIcon
 from System.Threading import Thread, ThreadStart, ApartmentState
 
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT      = r"C:\astro\bme280-observatory"
-_LATEST_JSON    = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
-_REPO_CSV       = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
-_CAPTURES_ROOT  = os.path.join(os.path.expanduser("~"), "Desktop", "SharpCap Captures")
-_SESSION_DATE   = datetime.date.today().strftime("%Y%m%d")
-_SESSION_CSV    = os.path.join(_CAPTURES_ROOT, "sharpcap_conditions_%s.csv" % _SESSION_DATE)
+_REPO_ROOT     = r"C:\astro\bme280-observatory"
+_LATEST_JSON   = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
+_REPO_CSV      = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
+_CAPTURES_ROOT = os.path.join(os.path.expanduser("~"), "Desktop", "SharpCap Captures")
+_SESSION_DATE  = datetime.date.today().strftime("%Y%m%d")
+_SESSION_CSV   = os.path.join(_CAPTURES_ROOT, "sharpcap_conditions_%s.csv" % _SESSION_DATE)
 
-_CSV_HEADER     = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
+_CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
 _SAMPLE_INTERVAL_S = 60
 
 # ---------------------------------------------------------------------------
@@ -51,7 +44,6 @@ _SAMPLE_INTERVAL_S = 60
 # ---------------------------------------------------------------------------
 
 def _read_latest():
-    """Return the latest BME280 reading dict, or None if unavailable."""
     try:
         with open(_LATEST_JSON, "r", encoding="utf-8") as fh:
             return json.load(fh)
@@ -60,7 +52,6 @@ def _read_latest():
 
 
 def _append_csv(path, row):
-    """Append a CSV row to path, writing header if the file is new."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         write_header = not os.path.exists(path)
@@ -69,7 +60,7 @@ def _append_csv(path, row):
                 fh.write(_CSV_HEADER)
             fh.write(row + "\n")
     except Exception as exc:
-        SharpCap.ShowNotification("BME280: could not write CSV: %s" % exc)
+        print("[BME280] CSV write error: %s" % exc)
 
 
 def _format_row(reading):
@@ -103,10 +94,15 @@ def _format_display(reading):
 
 
 # ---------------------------------------------------------------------------
-# Toolbar button callback
+# Public console command
 # ---------------------------------------------------------------------------
 
-def _show_conditions(sender, args):
+def conditions():
+    """Show latest observatory conditions in a dialog.
+
+    Call from the SharpCap scripting console (Alt+F11):
+        conditions()
+    """
     reading = _read_latest()
     if reading is None:
         MessageBox.Show(
@@ -130,37 +126,27 @@ def _show_conditions(sender, args):
 
 def _sampling_loop():
     import time
+    print("[BME280] Sampling loop started (every %ds)" % _SAMPLE_INTERVAL_S)
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
             _append_csv(_SESSION_CSV, row)
+            print("[BME280] %s" % row)
+        else:
+            print("[BME280] latest_reading.json not found, retrying...")
         time.sleep(_SAMPLE_INTERVAL_S)
 
 
 # ---------------------------------------------------------------------------
-# Entry point — called once by SharpCap at startup
+# Entry point
 # ---------------------------------------------------------------------------
 
-def _start():
-    # Add toolbar button
-    try:
-        btn = ToolStripButton()
-        btn.Text = "Obs. Conditions"
-        btn.ToolTipText = "Show current observatory temperature, humidity and pressure"
-        btn.Click += _show_conditions
-        SharpCap.MainToolBar.Items.Add(btn)
-    except Exception as exc:
-        SharpCap.ShowNotification("BME280: toolbar button error: %s" % exc)
+t = Thread(ThreadStart(_sampling_loop))
+t.IsBackground = True
+t.ApartmentState = ApartmentState.STA
+t.Start()
 
-    # Start background sampling thread
-    t = Thread(ThreadStart(_sampling_loop))
-    t.IsBackground = True
-    t.ApartmentState = ApartmentState.STA
-    t.Start()
-
-    SharpCap.ShowNotification("Observatory Conditions logger started (60 s interval)")
-
-
-_start()
+print("[BME280] Observatory Conditions logger started.")
+print("[BME280] Type  conditions()  in this console to show latest reading.")
