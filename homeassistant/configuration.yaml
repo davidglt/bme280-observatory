@@ -1,51 +1,33 @@
-# Fragmento de configuration.yaml para integrar el BME280 via MQTT
-# Pega este bloque en tu configuration.yaml o en un archivo separado
-# incluido con: mqtt: !include mqtt.yaml
+# Fragmento de configuration.yaml para integrar el BME280 del observatorio via MQTT
+# Pega este bloque en tu configuration.yaml de Home Assistant
+# o incluye el archivo sensor.yaml con: mqtt: !include sensor.yaml
+#
+# Topics publicados por sensor/bme280_ch341a.py:
+#   homeassistant/observatory/temperature
+#   homeassistant/observatory/humidity
+#   homeassistant/observatory/pressure
+#
+# Patron consistente con sensores de sotano: homeassistant/basement/...
 
 mqtt:
   sensor:
-    - name: "Observatorio Temperatura"
-      unique_id: observatory_bme280_temperature
-      state_topic: "observatory/bme280/temperature"
-      unit_of_measurement: "°C"
+    - name: observatory_temperature
+      unique_id: "observatory_temperature"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/temperature"
       device_class: temperature
-      state_class: measurement
-      value_template: "{{ value | float | round(2) }}"
-      availability_topic: "observatory/bme280/status"
-      availability_template: "{{ 'online' if value_json.temperature is defined else 'offline' }}"
-      icon: mdi:thermometer
+      unit_of_measurement: "\xb0C"
 
-    - name: "Observatorio Humedad"
-      unique_id: observatory_bme280_humidity
-      state_topic: "observatory/bme280/humidity"
-      unit_of_measurement: "%"
+    - name: observatory_humidity
+      unique_id: "observatory_humidity"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/humidity"
       device_class: humidity
-      state_class: measurement
-      value_template: "{{ value | float | round(2) }}"
-      icon: mdi:water-percent
+      unit_of_measurement: "%"
 
-    - name: "Observatorio Presión"
-      unique_id: observatory_bme280_pressure
-      state_topic: "observatory/bme280/pressure"
-      unit_of_measurement: "hPa"
+    - name: observatory_pressure
+      unique_id: "observatory_pressure"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/pressure"
       device_class: pressure
-      state_class: measurement
-      value_template: "{{ value | float | round(2) }}"
-      icon: mdi:gauge
-
-    - name: "Observatorio Presión Raw"
-      unique_id: observatory_bme280_pressure_raw
-      state_topic: "observatory/bme280/pressure_raw"
       unit_of_measurement: "hPa"
-      device_class: pressure
-      state_class: measurement
-      value_template: "{{ value | float | round(2) }}"
-      entity_category: diagnostic
-
-    # Sensor JSON completo (para automatizaciones avanzadas)
-    - name: "Observatorio BME280 Status"
-      unique_id: observatory_bme280_status
-      state_topic: "observatory/bme280/status"
-      value_template: "{{ value_json.timestamp }}"
-      json_attributes_topic: "observatory/bme280/status"
-      icon: mdi:weather-partly-cloudy
