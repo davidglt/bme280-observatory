@@ -1,0 +1,54 @@
+# Dashboard cards for the Observatory BME280 sensor
+# Paste into a manual card in Lovelace (raw YAML editor)
+#
+# Option A: single Entities card with all four sensors
+title: Observatory
+views:
+  - title: Observatory Conditions
+    path: observatory
+    icon: mdi:telescope
+    cards:
+      - type: entities
+        title: Observatory BME280
+        entities:
+          - entity: sensor.observatory_temperature
+            name: Temperature
+            icon: mdi:thermometer
+          - entity: sensor.observatory_humidity
+            name: Humidity
+            icon: mdi:water-percent
+          - entity: sensor.observatory_pressure
+            name: Pressure
+            icon: mdi:gauge
+          - entity: sensor.observatory_pressure_altitude
+            name: Pressure Altitude (ISA)
+            icon: mdi:altimeter
+
+      - type: sensor
+        entity: sensor.observatory_temperature
+        name: Temperature
+        graph: line
+        hours_to_show: 24
+        detail: 2
+
+      - type: sensor
+        entity: sensor.observatory_humidity
+        name: Humidity
+        graph: line
+        hours_to_show: 24
+        detail: 2
+
+      - type: sensor
+        entity: sensor.observatory_pressure
+        name: Pressure
+        graph: line
+        hours_to_show: 24
+        detail: 2
+
+      - type: sensor
+        entity: sensor.observatory_pressure_altitude
+        name: Pressure Altitude (ISA)
+        graph: line
+        hours_to_show: 24
+        detail: 2
+        icon: mdi:altimeter

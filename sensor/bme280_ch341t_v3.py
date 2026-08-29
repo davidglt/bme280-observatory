@@ -7,11 +7,13 @@
 
 Uses i2cpy as the sole backend (pip install i2cpy).
 
-Publishes temperature, humidity and pressure to Mosquitto / Home Assistant
-over MQTT.  Configuration via sensor/config.ini (see config.example.ini).
+Publishes temperature, humidity, pressure and ISA pressure altitude
+to Mosquitto / Home Assistant over MQTT.
+Configuration via sensor/config.ini (see config.example.ini).
 """
 import configparser
 import logging
+import math
 import os
 import struct
 import sys
@@ -28,6 +30,21 @@ DEG = chr(176)
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH         = os.path.join(_ROOT, "config.ini")
 CONFIG_EXAMPLE_PATH = os.path.join(_ROOT, "config.example.ini")
+
+# ISA standard sea-level pressure (hPa)
+_ISA_P0 = 1013.25
+
+
+def pressure_altitude_isa(pressure_hpa: float) -> float:
+    """Return ISA pressure altitude in metres for a given absolute pressure.
+
+    Formula: h = 44330.77 * [1 - (P / 1013.25)^0.1902632]
+    Reference: ICAO Standard Atmosphere / NCAR Aircraft Processing Algorithms.
+    NOTE: This is NOT the geographic elevation of the observatory;
+    it varies with weather.  Use altitude_m in config.ini for sea-level
+    pressure reduction.
+    """
+    return round(44330.77 * (1.0 - math.pow(pressure_hpa / _ISA_P0, 0.1902632)), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +144,7 @@ class BME280:
         time.sleep(0.1)
 
     def read(self) -> dict:
-        """Return dict: temperature (degC, 2dp), humidity (%, 3dp), pressure (hPa, 3dp)."""
+        """Return dict with temperature (2dp), humidity (3dp), pressure (3dp)."""
         self._forced()
         raw  = self._bus.read_reg(self._addr, self.REG_DATA, 8)
         praw = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4)
@@ -211,11 +228,13 @@ def run() -> None:
     try:
         while True:
             data = sensor.read()
+            alt  = pressure_altitude_isa(data["pressure"])
             for key, val in data.items():
                 client.publish("%s/%s" % (prefix, key), str(val), qos=qos, retain=retain)
+            client.publish("%s/pressure_altitude" % prefix, str(alt), qos=qos, retain=retain)
             log.info(
-                "T=%.2f%sC  H=%.3f%%  P=%.3fhPa",
-                data["temperature"], DEG, data["humidity"], data["pressure"],
+                "T=%.2f%sC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm",
+                data["temperature"], DEG, data["humidity"], data["pressure"], alt,
             )
             time.sleep(interval)
     except KeyboardInterrupt:

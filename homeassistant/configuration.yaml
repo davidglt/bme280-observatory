@@ -6,6 +6,7 @@
 #   homeassistant/observatory/temperature
 #   homeassistant/observatory/humidity
 #   homeassistant/observatory/pressure
+#   homeassistant/observatory/pressure_altitude  (ISA, varies with weather)
 #
 # Patron consistente con sensores de sotano: homeassistant/basement/...
 
@@ -31,3 +32,10 @@ mqtt:
       state_topic: "homeassistant/observatory/pressure"
       device_class: pressure
       unit_of_measurement: "hPa"
+
+    - name: observatory_pressure_altitude
+      unique_id: "observatory_pressure_altitude"
+      state_class: measurement
+      state_topic: "homeassistant/observatory/pressure_altitude"
+      icon: mdi:altimeter
+      unit_of_measurement: "m"
