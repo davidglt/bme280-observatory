@@ -10,10 +10,10 @@
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
 #   - Always appends to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
-#   - When SharpCap.CaptureFolder is available, also appends to:
+#   - Only appends to session CSV if SharpCap has already created today's folder:
 #       <CaptureFolder>\YYYY-MM-DD\sharpcap_conditions.csv
-#     YYYY-MM-DD is fixed at startup (same session date SharpCap uses).
-#     If CaptureFolder is not set, readings are logged to console only.
+#     If the folder doesn't exist yet, readings are logged to console only.
+#     The folder is never created by this script.
 #
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
 #     Type  conditions()  at any time to see the latest reading.
@@ -40,24 +40,22 @@ _REPO_CSV          = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
 _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
 _SAMPLE_INTERVAL_S = 60
 
-# Session date fixed at startup — same date SharpCap uses for this session.
+# Session date fixed at startup.
 _SESSION_DATE = datetime.date.today().strftime("%Y-%m-%d")
 
 
 def _capture_csv():
-    """Return the session CSV path: <CaptureFolder>\YYYY-MM-DD\sharpcap_conditions.csv
+    """Return the session CSV path if SharpCap has already created today's folder.
 
-    CaptureFolder root comes from SharpCap (respects user settings).
-    YYYY-MM-DD is fixed at startup so the CSV stays in the same folder
-    as the captures for this session.
-    Returns None if CaptureFolder is not available.
+    Checks for <CaptureFolder>\YYYY-MM-DD\ existence.
+    Returns None (and never creates the folder) if it doesn't exist yet.
     """
     try:
         root = SharpCap.CaptureFolder
         if root and root.strip():
             session_dir = os.path.join(root, _SESSION_DATE)
-            os.makedirs(session_dir, exist_ok=True)
-            return os.path.join(session_dir, "sharpcap_conditions.csv")
+            if os.path.isdir(session_dir):
+                return os.path.join(session_dir, "sharpcap_conditions.csv")
     except Exception:
         pass
     return None
@@ -167,22 +165,23 @@ def conditions():
 
 def _sampling_loop():
     import time
-    capture_csv = _capture_csv()
     _info("=" * 52)
     _info("Observatory Conditions Logger starting...")
     _info("Repo CSV    : %s" % _REPO_CSV)
-    if capture_csv:
-        _info("Session CSV : %s" % capture_csv)
-    else:
-        _info("Session CSV : not available (no CaptureFolder)")
+    _info("Session CSV : waiting for SharpCap to create %s\\" % _SESSION_DATE)
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
+    _last_capture_csv = None
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
+            capture_csv = _capture_csv()
             if capture_csv:
+                if capture_csv != _last_capture_csv:
+                    _info("Session CSV: %s" % capture_csv)
+                    _last_capture_csv = capture_csv
                 _append_csv(capture_csv, row)
                 _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm  [repo+session]" % (
                     reading["temperature_c"],
