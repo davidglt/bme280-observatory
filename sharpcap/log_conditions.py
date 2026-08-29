@@ -8,13 +8,11 @@
 #
 # What it does:
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
-#   - Appends one CSV row to:
+#   - Always appends to:
 #       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
-#       <SharpCap.CaptureFolder>\sharpcap_conditions.csv  (junto a las capturas activas)
-#
-#   SharpCap.CaptureFolder is read on every tick, so the CSV always follows
-#   wherever SharpCap is currently writing captures — including mid-session
-#   folder changes or new sessions on a different date.
+#   - Only appends to session CSV when SharpCap has an active capture folder:
+#       <SharpCap.CaptureFolder>\sharpcap_conditions.csv
+#     If no capture is active, readings are logged to console only.
 #
 #   - Exposes conditions() in the SharpCap scripting console (Alt+F11)
 #     Type  conditions()  at any time to see the latest reading.
@@ -43,17 +41,14 @@ _SAMPLE_INTERVAL_S = 60
 
 
 def _capture_csv():
-    """Return the CSV path inside SharpCap's current capture folder.
+    """Return the CSV path inside SharpCap's active capture folder, or None.
 
-    SharpCap.CaptureFolder always points to the folder where captures are
-    being written right now (e.g. Desktop\SharpCap Captures\2026-08-29).
-    Reading it on every tick means the CSV follows automatically if the
-    folder changes mid-session or on a new date.
-    Returns None if CaptureFolder is not set.
+    Returns None when CaptureFolder is empty/unavailable (no active capture),
+    so the caller can skip writing the session CSV.
     """
     try:
         folder = SharpCap.CaptureFolder
-        if folder:
+        if folder and folder.strip():
             os.makedirs(folder, exist_ok=True)
             return os.path.join(folder, "sharpcap_conditions.csv")
     except Exception:
@@ -168,7 +163,7 @@ def _sampling_loop():
     _info("=" * 52)
     _info("Observatory Conditions Logger starting...")
     _info("Repo CSV : %s" % _REPO_CSV)
-    _info("Session  : follows SharpCap.CaptureFolder in real time")
+    _info("Session  : follows SharpCap.CaptureFolder (written only when capturing)")
     _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
     _info("=" * 52)
     _last_capture_csv = None
@@ -176,19 +171,31 @@ def _sampling_loop():
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
+            # Always write to the repo accumulator
             _append_csv(_REPO_CSV, row)
+            # Write to session CSV only when SharpCap has an active capture folder
             capture_csv = _capture_csv()
             if capture_csv:
                 if capture_csv != _last_capture_csv:
                     _info("Session CSV: %s" % capture_csv)
                     _last_capture_csv = capture_csv
                 _append_csv(capture_csv, row)
-            _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm" % (
-                reading["temperature_c"],
-                reading["humidity_pct"],
-                reading["pressure_hpa"],
-                reading["pressure_altitude_m"],
-            ))
+                _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm  [repo+session]" % (
+                    reading["temperature_c"],
+                    reading["humidity_pct"],
+                    reading["pressure_hpa"],
+                    reading["pressure_altitude_m"],
+                ))
+            else:
+                if _last_capture_csv is not None:
+                    _info("No active capture folder — session CSV paused.")
+                    _last_capture_csv = None
+                _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm  [repo only]" % (
+                    reading["temperature_c"],
+                    reading["humidity_pct"],
+                    reading["pressure_hpa"],
+                    reading["pressure_altitude_m"],
+                ))
         else:
             _warn("latest_reading.json not found. Next check in %ds..." % _SAMPLE_INTERVAL_S)
         time.sleep(_SAMPLE_INTERVAL_S)
