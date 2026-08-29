@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: ascii -*-
+# SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
+# SPDX-License-Identifier: GPL-3.0-or-later
 
 """
 BME280 / BMP280 probe for Windows 11 + CH341T (GY-BMEP 4-pin module).
 
-Two backend modes are tried in order:
-  1. i2cpy  -- high-level library that handles CH341 address format correctly.
-  2. ctypes -- direct DLL calls with explicit (addr << 1) address format.
+Uses i2cpy as the sole backend (pip install i2cpy).
 
 Expected chip IDs:
   BME280 -> 0x60  (temperature + humidity + pressure)
@@ -15,9 +15,6 @@ Expected chip IDs:
 Usage:
   pip install i2cpy
   python probe_bme280_ch341a.py
-
-If i2cpy is not installed the script falls back to the ctypes backend
-automatically.
 
 Wiring for GY-BMEP 4-pin (CH341T_V3 I2C connector):
   VCC  -> 3.3 V
@@ -29,8 +26,7 @@ I2C address:
   SDO tied to GND (internal pull-down on 4-pin module) -> 0x76
 """
 
-import ctypes
-import os
+import struct
 import sys
 import time
 
@@ -51,14 +47,13 @@ REG_DATA      = 0xF7
 BME280_CHIP_ID = 0x60
 BMP280_CHIP_ID = 0x58
 
-DLL_CANDIDATES = [
-    "CH341DLLA64.DLL",
-    "CH341DLL64.dll",
-    "CH341DLL.dll",
-    os.path.join(
-        os.environ.get("WINDIR", r"C:\Windows"), "System32", "CH341DLLA64.DLL"
-    ),
-]
+# Plausibility ranges for compensated values
+TEMP_MIN_C =  -40.0
+TEMP_MAX_C =   85.0
+HUM_MIN    =    0.0
+HUM_MAX    =  100.0
+PRES_MIN   =  300.0   # hPa
+PRES_MAX   = 1100.0   # hPa
 
 
 # ---------------------------------------------------------------------------
@@ -70,15 +65,25 @@ def hex8(v):
 
 
 # ---------------------------------------------------------------------------
-# Backend 1: i2cpy
+# Backend: i2cpy (sole backend)
 # ---------------------------------------------------------------------------
 
 class I2CpyBackend:
     """Uses the i2cpy library (pip install i2cpy)."""
 
     def __init__(self):
-        import i2cpy
-        self._i2c = i2cpy.I2C(driver="ch341")
+        try:
+            import i2cpy
+        except ImportError:
+            print("[FAIL] i2cpy is not installed.")
+            print("       Run:  pip install i2cpy")
+            sys.exit(1)
+        try:
+            self._i2c = i2cpy.I2C(driver="ch341")
+        except Exception as exc:
+            print(f"[FAIL] Could not open CH341 device via i2cpy: {exc}")
+            print("       Check USB cable and that the CH341 driver is installed.")
+            sys.exit(1)
         print("[OK] i2cpy backend initialised (CH341 driver)")
 
     def read_reg_byte(self, addr, reg):
@@ -92,131 +97,12 @@ class I2CpyBackend:
         self._i2c.writeto_mem(addr, reg, bytes(data))
 
     def close(self):
-        # i2cpy I2C object may not expose close(); guard against AttributeError
         close_fn = getattr(self._i2c, "close", None) or getattr(self._i2c, "deinit", None)
         if close_fn is not None:
             try:
                 close_fn()
             except Exception:
                 pass
-
-
-# ---------------------------------------------------------------------------
-# Backend 2: ctypes (CH341DLLA64.DLL)
-# ---------------------------------------------------------------------------
-
-class CtypesBackend:
-    """Direct DLL calls.  CH341ReadI2C expects the 8-bit wire address
-    (7-bit addr << 1) in its iDevice parameter."""
-
-    def __init__(self):
-        self.dll = None
-        last_error = None
-
-        for candidate in DLL_CANDIDATES:
-            try:
-                self.dll = ctypes.WinDLL(candidate)
-                print(f"[OK] Loaded CH341 DLL: {candidate}")
-                break
-            except OSError as exc:
-                last_error = exc
-
-        if self.dll is None:
-            raise RuntimeError(f"Unable to load CH341 DLL: {last_error}")
-
-        self._bind()
-        self._open()
-        self._set_speed()
-
-    def _bind(self):
-        self.dll.CH341OpenDevice.argtypes = [ctypes.c_ulong]
-        self.dll.CH341OpenDevice.restype  = ctypes.c_void_p
-
-        self.dll.CH341CloseDevice.argtypes = [ctypes.c_ulong]
-        self.dll.CH341CloseDevice.restype  = None
-
-        self.dll.CH341SetStream.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
-        self.dll.CH341SetStream.restype  = ctypes.c_bool
-
-        self.dll.CH341ReadI2C.argtypes = [
-            ctypes.c_ulong,
-            ctypes.c_ubyte,
-            ctypes.c_ubyte,
-            ctypes.POINTER(ctypes.c_ubyte),
-        ]
-        self.dll.CH341ReadI2C.restype = ctypes.c_bool
-
-        self.dll.CH341StreamI2C.argtypes = [
-            ctypes.c_ulong,
-            ctypes.c_ulong,
-            ctypes.POINTER(ctypes.c_ubyte),
-            ctypes.c_ulong,
-            ctypes.POINTER(ctypes.c_ubyte),
-        ]
-        self.dll.CH341StreamI2C.restype = ctypes.c_bool
-
-    def _open(self):
-        handle = self.dll.CH341OpenDevice(0)
-        if not handle:
-            raise RuntimeError("Unable to open CH341 device")
-        print("[OK] CH341 device opened")
-
-    def _set_speed(self):
-        ok = self.dll.CH341SetStream(0, 0x01)
-        if not ok:
-            raise RuntimeError("Unable to configure CH341 I2C speed")
-        print("[OK] CH341 configured for standard I2C speed")
-
-    def read_reg_byte(self, addr, reg):
-        value = ctypes.c_ubyte(0)
-        ok = self.dll.CH341ReadI2C(
-            0,
-            ctypes.c_ubyte(addr << 1),
-            ctypes.c_ubyte(reg),
-            ctypes.byref(value),
-        )
-        if not ok:
-            raise IOError(f"CH341ReadI2C failed addr={hex8(addr)} reg={hex8(reg)}")
-        return value.value
-
-    def read_regs(self, addr, start_reg, length):
-        data = bytearray()
-        for offset in range(length):
-            data.append(self.read_reg_byte(addr, (start_reg + offset) & 0xFF))
-        return bytes(data)
-
-    def write_reg(self, addr, reg, data):
-        write_data = bytes([(addr << 1) & 0xFE, reg]) + bytes(data)
-        out_buf = (ctypes.c_ubyte * len(write_data))(*write_data)
-        in_buf  = (ctypes.c_ubyte * 1)()
-        ok = self.dll.CH341StreamI2C(
-            0, len(write_data), out_buf, 0, in_buf
-        )
-        if not ok:
-            raise IOError(f"CH341StreamI2C write failed addr={hex8(addr)} reg={hex8(reg)}")
-
-    def close(self):
-        if self.dll is not None:
-            self.dll.CH341CloseDevice(0)
-
-
-# ---------------------------------------------------------------------------
-# Backend factory
-# ---------------------------------------------------------------------------
-
-def make_backend():
-    try:
-        backend = I2CpyBackend()
-        print("[INFO] Using i2cpy backend")
-        return backend
-    except ImportError:
-        print("[INFO] i2cpy not installed, falling back to ctypes backend")
-    except Exception as exc:
-        print(f"[WARN] i2cpy backend failed: {exc}, falling back to ctypes")
-
-    backend = CtypesBackend()
-    print("[INFO] Using ctypes backend")
-    return backend
 
 
 # ---------------------------------------------------------------------------
@@ -236,11 +122,30 @@ def read_status(bus, addr):
     return bus.read_reg_byte(addr, REG_STATUS)
 
 
-def read_calibration_blocks(bus, addr):
+def read_calibration_raw(bus, addr):
     calib_a  = bus.read_regs(addr, 0x88, 24)
     calib_h1 = bus.read_regs(addr, 0xA1, 1)
     calib_h  = bus.read_regs(addr, 0xE1, 7)
-    return calib_a + calib_h1 + calib_h
+    return calib_a, calib_h1, calib_h
+
+
+def parse_calibration(calib_a, calib_h1, calib_h):
+    """Parse calibration bytes into named coefficients (Bosch datasheet 4.2.2)."""
+    (T1, T2, T3,
+     P1, P2, P3, P4, P5, P6, P7, P8, P9) = struct.unpack("<HhhHhhhhhhhh", calib_a)
+
+    H1 = calib_h1[0]
+    e  = calib_h
+    H2 = struct.unpack("<h", bytes([e[0], e[1]]))[0]
+    H3 = e[2]
+    H4 = (e[3] << 4) | (e[4] & 0x0F)
+    H5 = (e[4] >> 4) | (e[5] << 4)
+    H6 = struct.unpack("b", bytes([e[6]]))[0]
+
+    return dict(T1=T1, T2=T2, T3=T3,
+                P1=P1, P2=P2, P3=P3, P4=P4, P5=P5,
+                P6=P6, P7=P7, P8=P8, P9=P9,
+                H1=H1, H2=H2, H3=H3, H4=H4, H5=H5, H6=H6)
 
 
 def configure_forced(bus, addr):
@@ -255,6 +160,50 @@ def read_raw(bus, addr):
     t_raw = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
     h_raw = (data[6] << 8)  |  data[7]
     return p_raw, t_raw, h_raw
+
+
+def compensate(p_raw, t_raw, h_raw, c, has_hum):
+    """Apply Bosch compensation (datasheet section 4.2.3)."""
+    # Temperature
+    v1     = (t_raw / 16384.0  - c["T1"] / 1024.0)  * c["T2"]
+    v2     = ((t_raw / 131072.0 - c["T1"] / 8192.0) ** 2) * c["T3"]
+    t_fine = v1 + v2
+    temp   = t_fine / 5120.0
+
+    # Pressure
+    v1 = t_fine / 2.0 - 64000.0
+    v2 = v1 * v1 * c["P6"] / 32768.0 + v1 * c["P5"] * 2.0
+    v2 = v2 / 4.0 + c["P4"] * 65536.0
+    v1 = (c["P3"] * v1 * v1 / 524288.0 + c["P2"] * v1) / 524288.0
+    v1 = (1.0 + v1 / 32768.0) * c["P1"]
+    if v1 == 0.0:
+        pres = 0.0
+    else:
+        p  = 1048576.0 - p_raw
+        p  = ((p - v2 / 4096.0) * 6250.0) / v1
+        v1 = c["P9"] * p * p / 2147483648.0
+        v2 = p * c["P8"] / 32768.0
+        pres = (p + (v1 + v2 + c["P7"]) / 16.0) / 100.0
+
+    # Humidity
+    if not has_hum:
+        humi = 0.0
+    else:
+        h = t_fine - 76800.0
+        if h == 0.0:
+            humi = 0.0
+        else:
+            h = (h_raw - (c["H4"] * 64.0 + c["H5"] / 16384.0 * h)) * (
+                c["H2"] / 65536.0 * (
+                    1.0 + c["H6"] / 67108864.0 * h * (
+                        1.0 + c["H3"] / 67108864.0 * h
+                    )
+                )
+            )
+            h    *= 1.0 - c["H1"] * h / 524288.0
+            humi  = max(0.0, min(100.0, h))
+
+    return round(temp, 2), round(humi, 2), round(pres, 2)
 
 
 def detect_devices(bus):
@@ -272,12 +221,16 @@ def detect_devices(bus):
     return found
 
 
-def check_calibration(calib):
-    if all(x == 0x00 for x in calib):
+def check_calibration(calib_a, calib_h1, calib_h):
+    all_bytes = calib_a + calib_h1 + calib_h
+    if all(x == 0x00 for x in all_bytes):
         raise RuntimeError("Calibration block is all 0x00")
-    if all(x == 0xFF for x in calib):
+    if all(x == 0xFF for x in all_bytes):
         raise RuntimeError("Calibration block is all 0xFF")
-    print(f"[OK] Calibration: {len(calib)} bytes, first={hex8(calib[0])} last={hex8(calib[-1])}")
+    print(
+        f"[OK] Calibration: {len(all_bytes)} bytes, "
+        f"first={hex8(all_bytes[0])} last={hex8(all_bytes[-1])}"
+    )
 
 
 def plausibility_notes(p_raw, t_raw, h_raw):
@@ -291,6 +244,17 @@ def plausibility_notes(p_raw, t_raw, h_raw):
     return notes
 
 
+def plausibility_notes_compensated(temp, humi, pres, has_hum):
+    notes = []
+    if not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
+        notes.append(f"temperature {temp} out of range [{TEMP_MIN_C}, {TEMP_MAX_C}] degC")
+    if has_hum and not (HUM_MIN <= humi <= HUM_MAX):
+        notes.append(f"humidity {humi} out of range [{HUM_MIN}, {HUM_MAX}] %")
+    if not (PRES_MIN <= pres <= PRES_MAX):
+        notes.append(f"pressure {pres} out of range [{PRES_MIN}, {PRES_MAX}] hPa")
+    return notes
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -299,7 +263,7 @@ def main():
     bus = None
     try:
         print("=== BME280 CH341T probe ===\n")
-        bus = make_backend()
+        bus = I2CpyBackend()
 
         print("\n[1] Device detection")
         found = detect_devices(bus)
@@ -314,7 +278,8 @@ def main():
             sys.exit(1)
 
         addr, chip_id = found[0]
-        label = "BME280" if chip_id == BME280_CHIP_ID else "BMP280"
+        has_hum = (chip_id == BME280_CHIP_ID)
+        label   = "BME280" if has_hum else "BMP280"
         print(f"[OK] Using {label} at {hex8(addr)}")
 
         print("\n[2] Soft reset and status")
@@ -325,8 +290,9 @@ def main():
         print(f"[OK] STATUS={hex8(status)} measuring={measuring} im_update={im_update}")
 
         print("\n[3] Calibration data")
-        calib = read_calibration_blocks(bus, addr)
-        check_calibration(calib)
+        calib_a, calib_h1, calib_h = read_calibration_raw(bus, addr)
+        check_calibration(calib_a, calib_h1, calib_h)
+        calib = parse_calibration(calib_a, calib_h1, calib_h)
 
         print("\n[4] Raw measurement test (5 samples)")
         for idx in range(5):
@@ -339,6 +305,21 @@ def main():
                 f"{flag} STATUS={hex8(status)} "
                 f"Praw={p_raw:6d}  Traw={t_raw:6d}  Hraw={h_raw:5d}"
             )
+            if notes:
+                print("       Notes: " + "; ".join(notes))
+            time.sleep(1.0)
+
+        print("\n[5] Compensated readings (5 samples, Bosch datasheet 4.2.3)")
+        for idx in range(5):
+            configure_forced(bus, addr)
+            p_raw, t_raw, h_raw = read_raw(bus, addr)
+            temp, humi, pres = compensate(p_raw, t_raw, h_raw, calib, has_hum)
+            notes = plausibility_notes_compensated(temp, humi, pres, has_hum)
+            flag  = "[WARN]" if notes else f"[{idx+1}/5]"
+            if has_hum:
+                print(f"{flag} T={temp:6.2f} degC  H={humi:5.2f} %  P={pres:8.2f} hPa")
+            else:
+                print(f"{flag} T={temp:6.2f} degC  P={pres:8.2f} hPa  (BMP280: no humidity)")
             if notes:
                 print("       Notes: " + "; ".join(notes))
             time.sleep(1.0)
