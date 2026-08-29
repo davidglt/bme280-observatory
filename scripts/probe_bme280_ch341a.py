@@ -19,7 +19,7 @@ Usage:
 If i2cpy is not installed the script falls back to the ctypes backend
 automatically.
 
-Wiring for GY-BMEP 4-pin (CH341T_V3 connector):
+Wiring for GY-BMEP 4-pin (CH341T_V3 I2C connector):
   VCC  -> 3.3 V
   GND  -> GND
   SDA  -> SDA
@@ -33,6 +33,7 @@ import ctypes
 import os
 import sys
 import time
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -91,7 +92,13 @@ class I2CpyBackend:
         self._i2c.writeto_mem(addr, reg, bytes(data))
 
     def close(self):
-        self._i2c.close()
+        # i2cpy I2C object may not expose close(); guard against AttributeError
+        close_fn = getattr(self._i2c, "close", None) or getattr(self._i2c, "deinit", None)
+        if close_fn is not None:
+            try:
+                close_fn()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -99,8 +106,8 @@ class I2CpyBackend:
 # ---------------------------------------------------------------------------
 
 class CtypesBackend:
-    """Direct DLL calls.  Address must be left-shifted: CH341ReadI2C expects
-    the 8-bit wire address (7-bit addr << 1) in its iDevice parameter."""
+    """Direct DLL calls.  CH341ReadI2C expects the 8-bit wire address
+    (7-bit addr << 1) in its iDevice parameter."""
 
     def __init__(self):
         self.dll = None
@@ -162,7 +169,6 @@ class CtypesBackend:
 
     def read_reg_byte(self, addr, reg):
         value = ctypes.c_ubyte(0)
-        # CH341ReadI2C expects the 8-bit wire address (addr << 1)
         ok = self.dll.CH341ReadI2C(
             0,
             ctypes.c_ubyte(addr << 1),
@@ -180,7 +186,6 @@ class CtypesBackend:
         return bytes(data)
 
     def write_reg(self, addr, reg, data):
-        # CH341StreamI2C write: first byte = wire address for write (addr<<1)
         write_data = bytes([(addr << 1) & 0xFE, reg]) + bytes(data)
         out_buf = (ctypes.c_ubyte * len(write_data))(*write_data)
         in_buf  = (ctypes.c_ubyte * 1)()
@@ -299,11 +304,14 @@ def main():
         print("\n[1] Device detection")
         found = detect_devices(bus)
         if not found:
-            raise RuntimeError(
-                "No BME280/BMP280 found at 0x76 or 0x77.\n"
-                "Check wiring: VCC=3.3V, GND, SDA, SCL.\n"
-                "For 4-pin GY-BMEP: SDO is pulled to GND internally -> address 0x76."
+            print(
+                "\n[FAIL] No BME280/BMP280 found at 0x76 or 0x77.\n"
+                "  Check wiring: VCC=3.3V, GND, SDA, SCL.\n"
+                "  For 4-pin GY-BMEP: SDO is pulled to GND internally -> address 0x76.\n"
+                "  Make sure CSB is NOT connected to GND (that would activate SPI mode).\n"
+                "  Try unplugging and replugging the CH341T USB after fixing wiring."
             )
+            sys.exit(1)
 
         addr, chip_id = found[0]
         label = "BME280" if chip_id == BME280_CHIP_ID else "BMP280"
@@ -311,9 +319,9 @@ def main():
 
         print("\n[2] Soft reset and status")
         soft_reset(bus, addr)
-        status     = read_status(bus, addr)
-        measuring  = (status >> 3) & 0x01
-        im_update  = status & 0x01
+        status    = read_status(bus, addr)
+        measuring = (status >> 3) & 0x01
+        im_update = status & 0x01
         print(f"[OK] STATUS={hex8(status)} measuring={measuring} im_update={im_update}")
 
         print("\n[3] Calibration data")
@@ -337,6 +345,8 @@ def main():
 
         print("\n[OK] Probe completed successfully")
 
+    except SystemExit:
+        raise
     except Exception as exc:
         print(f"\n[FAIL] {exc}")
         sys.exit(1)
