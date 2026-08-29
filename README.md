@@ -17,7 +17,6 @@ Reads temperature, humidity, and pressure from a **BME280** sensor connected via
 bme280-observatory/
 ├── sensor/
 │   ├── bme280_ch341t_v3.py     # BME280 reading via CH341T_V3 + MQTT publishing
-│   ├── bme280_ascom.py         # ASCOM ObservingConditions server
 │   ├── bme280_mqtt.py          # Standalone MQTT loop
 │   └── config.example.ini      # Configuration template
 ├── sharpcap/
