@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
-BME280 / BMP280 probe for Windows 11 + CH341T (GY-BMEP 4-pin module).
+BME280 / BMP280 probe for Windows 11 + CH341T_V3 (GY-BMEP 4-pin module).
 
 Uses i2cpy as the sole backend (pip install i2cpy).
 
@@ -81,10 +81,10 @@ class I2CpyBackend:
         try:
             self._i2c = i2cpy.I2C(driver="ch341")
         except Exception as exc:
-            print(f"[FAIL] Could not open CH341 device via i2cpy: {exc}")
+            print(f"[FAIL] Could not open CH341T_V3 device via i2cpy: {exc}")
             print("       Check USB cable and that the CH341 driver is installed.")
             sys.exit(1)
-        print("[OK] i2cpy backend initialised (CH341 driver)")
+        print("[OK] i2cpy backend initialised (CH341T_V3 driver)")
 
     def read_reg_byte(self, addr, reg):
         data = self._i2c.readfrom_mem(addr, reg, 1)
@@ -262,7 +262,7 @@ def plausibility_notes_compensated(temp, humi, pres, has_hum):
 def main():
     bus = None
     try:
-        print("=== BME280 CH341T probe ===\n")
+        print("=== BME280 CH341T_V3 probe ===\n")
         bus = I2CpyBackend()
 
         print("\n[1] Device detection")
@@ -273,7 +273,7 @@ def main():
                 "  Check wiring: VCC=3.3V, GND, SDA, SCL.\n"
                 "  For 4-pin GY-BMEP: SDO is pulled to GND internally -> address 0x76.\n"
                 "  Make sure CSB is NOT connected to GND (that would activate SPI mode).\n"
-                "  Try unplugging and replugging the CH341T USB after fixing wiring."
+                "  Try unplugging and replugging the CH341T_V3 USB after fixing wiring."
             )
             sys.exit(1)
 

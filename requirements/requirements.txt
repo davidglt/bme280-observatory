@@ -2,7 +2,7 @@
 # Install with: pip install -r requirements/requirements.txt
 # Versions verified on NYX (.venv) 2026-08-29
 
-# I2C communication with CH341A/CH341T adapter
+# I2C communication with CH341T_V3 adapter
 i2cpy>=0.2.1
 
 # MQTT client -> Mosquitto / Home Assistant

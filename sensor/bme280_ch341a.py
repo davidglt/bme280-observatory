@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""BME280 reader via CH341A/CH341T USB-I2C adapter on Windows 11 (NYX).
+"""BME280 reader via CH341T_V3 USB-I2C adapter on Windows 11 (NYX).
 
 Uses i2cpy as the sole backend (pip install i2cpy).
 
@@ -58,10 +58,10 @@ class I2CpyBackend:
         try:
             self._i2c = i2cpy.I2C(driver="ch341")
         except Exception as exc:
-            log.error("Could not open CH341 device via i2cpy: %s", exc)
+            log.error("Could not open CH341T_V3 device via i2cpy: %s", exc)
             log.error("Check USB cable and that the CH341 driver is installed.")
             sys.exit(1)
-        log.info("i2cpy backend initialised (CH341 driver)")
+        log.info("i2cpy backend initialised (CH341T_V3 driver)")
 
     def read_reg(self, addr: int, reg: int, length: int) -> bytes:
         return bytes(self._i2c.readfrom_mem(addr, reg, length))
