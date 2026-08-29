@@ -40,6 +40,23 @@ _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure
 _SAMPLE_INTERVAL_S = 60
 
 # ---------------------------------------------------------------------------
+# Logging  (same format as ppec_auto_enable.py)
+# ---------------------------------------------------------------------------
+
+def _log(level, msg):
+    ts   = datetime.datetime.now().strftime("%H:%M:%S")
+    line = "{}  {:8s}  [BME280]  {}".format(ts, level, msg)
+    print(line)
+    try:
+        SharpCap.WriteToLog(line)
+    except Exception:
+        pass
+
+def _info(msg):  _log("INFO",  msg)
+def _error(msg): _log("ERROR", msg)
+def _warn(msg):  _log("WARNING", msg)
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -60,7 +77,7 @@ def _append_csv(path, row):
                 fh.write(_CSV_HEADER)
             fh.write(row + "\n")
     except Exception as exc:
-        print("[BME280] CSV write error: %s" % exc)
+        _error("CSV write error: %s" % exc)
 
 
 def _format_row(reading):
@@ -126,16 +143,26 @@ def conditions():
 
 def _sampling_loop():
     import time
-    print("[BME280] Sampling loop started (every %ds)" % _SAMPLE_INTERVAL_S)
+    _info("=" * 52)
+    _info("Observatory Conditions Logger starting...")
+    _info("Repo CSV  : %s" % _REPO_CSV)
+    _info("Session CSV: %s" % _SESSION_CSV)
+    _info("Sampling every %ds. Type  conditions()  to query." % _SAMPLE_INTERVAL_S)
+    _info("=" * 52)
     while True:
         reading = _read_latest()
         if reading is not None:
             row = _format_row(reading)
             _append_csv(_REPO_CSV, row)
             _append_csv(_SESSION_CSV, row)
-            print("[BME280] %s" % row)
+            _info("T=%.2fC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm" % (
+                reading["temperature_c"],
+                reading["humidity_pct"],
+                reading["pressure_hpa"],
+                reading["pressure_altitude_m"],
+            ))
         else:
-            print("[BME280] latest_reading.json not found, retrying...")
+            _warn("latest_reading.json not found. Next check in %ds..." % _SAMPLE_INTERVAL_S)
         time.sleep(_SAMPLE_INTERVAL_S)
 
 
@@ -147,6 +174,3 @@ t = Thread(ThreadStart(_sampling_loop))
 t.IsBackground = True
 t.ApartmentState = ApartmentState.STA
 t.Start()
-
-print("[BME280] Observatory Conditions logger started.")
-print("[BME280] Type  conditions()  in this console to show latest reading.")
