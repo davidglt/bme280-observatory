@@ -127,7 +127,7 @@ class BME280:
         time.sleep(0.1)
 
     def read(self) -> dict:
-        """Return dict: temperature (degC), humidity (%), pressure (hPa)."""
+        """Return dict: temperature (degC, 2dp), humidity (%, 3dp), pressure (hPa, 3dp)."""
         self._forced()
         raw  = self._bus.read_reg(self._addr, self.REG_DATA, 8)
         praw = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4)
@@ -175,8 +175,8 @@ class BME280:
 
         return {
             "temperature": round(temp, 2),
-            "humidity":    round(humi, 2),
-            "pressure":    round(pres, 2),
+            "humidity":    round(humi, 3),
+            "pressure":    round(pres, 3),
         }
 
 
@@ -214,7 +214,7 @@ def run() -> None:
             for key, val in data.items():
                 client.publish("%s/%s" % (prefix, key), str(val), qos=qos, retain=retain)
             log.info(
-                "T=%.2f%sC  H=%.2f%%  P=%.2fhPa",
+                "T=%.2f%sC  H=%.3f%%  P=%.3fhPa",
                 data["temperature"], DEG, data["humidity"], data["pressure"],
             )
             time.sleep(interval)
