@@ -15,52 +15,58 @@ Reads temperature, humidity, and pressure from a **BME280** sensor connected via
 
 ```
 ┌──────────────┐     I2C/USB     ┌──────────────────────────────┐
-│   BME280    │◄───────────►│  CH341T_V3 (i2cpy)              │
-│  (0x76)    │             │  bme280_ch341t_v3.py (30 s)   │
+│   BME280     │◄───────────►│  CH341T_V3 (i2cpy)           │
+│  (0x76)      │             │  bme280_ch341t_v3.py (30 s)  │
 └──────────────┘             └─────────────┬────────────────┘
-                                          │
-                   ┌──────────────────┤
-                   │                  │
-                   ▼                  ▼
-          MQTT (paho-mqtt)     HTTP :5380 (http.server)
-          Mosquitto / HA       sharpcap_conditions.py
-               │                      │
-               ▼                      ▼
-        Home Assistant            SharpCap Pro
-        (dashboard,           (Observing Conditions
-         automations)          Custom HTTP Source)
+                                           │
+                    ┌──────────────────────┤
+                    │                      │
+                    ▼                      ▼
+           MQTT (paho-mqtt)     HTTP :5380 (http.server)
+           Mosquitto / HA       sharpcap_conditions.py
+                │                      │
+                ▼                      ▼
+         Home Assistant            SharpCap Pro
+         (dashboard,           (Observing Conditions
+          automations)          Custom HTTP Source)
 ```
 
 ## MQTT Topics
 
 | Topic | Type | Example |
 |---|---|---|
-| `observatory/bme280/temperature` | float | `18.34` |
-| `observatory/bme280/humidity` | float | `72.10` |
-| `observatory/bme280/pressure` | float | `1013.25` (sea level) |
-| `observatory/bme280/dewpoint` | float | `12.45` |
-| `observatory/bme280/status` | JSON | `{"temperature":18.34,…,"timestamp":"2026-08-29T19:15:00+00:00"}` |
+| `homeassistant/nyx/temperature` | float | `18.34` |
+| `homeassistant/nyx/humidity` | float | `72.10` |
+| `homeassistant/nyx/pressure` | float | `1013.25` (absolute, hPa) |
+| `homeassistant/nyx/pressure_altitude` | float | `312.5` (ISA altitude, m) |
 
 ## Barometric Correction
 
-Pressure is corrected to sea level using the hypsometric formula:
+Pressure is reported as the absolute sensor reading (not reduced to sea level).
+The **ISA pressure altitude** is derived from the raw pressure using:
 
 ```
-P_slm = P_obs × exp( altitude / (29.3 × (T°C + 273.15)) )
+h = 44330.77 × [1 − (P / 1013.25)^0.1902632]
 ```
 
-Set your observatory’s actual altitude in `altitude_m` (`config.ini`).
+This gives an altitude that varies with weather, not the geographic elevation.
+Set your observatory's actual altitude in `altitude_m` (`config.ini`) if you add
+sea-level reduction to a downstream automation.
+
+## Observatory Altitude
+
+The observatory (NYX) is located at **700 m** above sea level.
 
 ## Dew Point
 
-Calculated via the Magnus formula:
+Calculated downstream from temperature and humidity via the Magnus formula:
 
 ```
 α  = ln(RH/100) + 17.625×T / (243.04 + T)
 dp = 243.04 × α / (17.625 − α)
 ```
 
-Condensation risk appears when `T − dp < 3°C`.
+Condensation risk when `T − dp < 3 °C`.
 
 ## Project Structure
 
@@ -68,11 +74,12 @@ Condensation risk appears when `T − dp < 3°C`.
 bme280-observatory/
 ├── sensor/
 │   ├── bme280_ch341t_v3.py     # BME280 reading via CH341T_V3 + MQTT publishing
-│   └── config.example.ini      # Configuration template
+│   └── config.example.ini      # Configuration template (no secrets)
 ├── sharpcap/
 │   └── sharpcap_conditions.py  # HTTP endpoint for SharpCap Observing Conditions
 ├── homeassistant/
-│   └── configuration.yaml      # MQTT sensor configuration for HA
+│   ├── configuration.yaml      # MQTT sensor block for configuration.yaml
+│   └── sensor.yaml             # Standalone MQTT sensor file (!include sensor.yaml)
 ├── scripts/
 │   ├── probe_bme280_ch341t_v3.py  # Hardware diagnostic: CH341T_V3 + BME280
 │   ├── run_observatory.bat        # Windows launcher (NYX)
@@ -104,6 +111,7 @@ pip install -r requirements/requirements.txt
 ### 3. Configuration
 
 Copy `sensor/config.example.ini` to `sensor/config.ini` and edit the I2C, MQTT, and SharpCap values.
+`sensor/config.ini` is excluded from the repository (see `.gitignore`).
 
 ### 4. Hardware Diagnostic
 
@@ -127,25 +135,42 @@ scripts\run_observatory.bat
 
 ## MQTT → Home Assistant Integration
 
-Add to your HA `configuration.yaml` or use `homeassistant/configuration.yaml`:
+Add to your HA `configuration.yaml`, or include `homeassistant/sensor.yaml` with
+`mqtt: !include sensor.yaml`:
 
 ```yaml
 mqtt:
   sensor:
-    - name: "Observatory Temperature"
-      state_topic: "observatory/bme280/temperature"
+    - name: NYX Temperature
+      unique_id: "nyx_temperature"
+      state_topic: "homeassistant/nyx/temperature"
+      device_class: temperature
       unit_of_measurement: "°C"
-    - name: "Observatory Humidity"
-      state_topic: "observatory/bme280/humidity"
+    - name: NYX Humidity
+      unique_id: "nyx_humidity"
+      state_topic: "homeassistant/nyx/humidity"
+      device_class: humidity
       unit_of_measurement: "%"
-    - name: "Observatory Pressure"
-      state_topic: "observatory/bme280/pressure"
+    - name: NYX Pressure
+      unique_id: "nyx_pressure"
+      state_topic: "homeassistant/nyx/pressure"
+      device_class: pressure
       unit_of_measurement: "hPa"
+    - name: NYX Pressure Altitude
+      unique_id: "nyx_pressure_altitude"
+      state_topic: "homeassistant/nyx/pressure_altitude"
+      icon: mdi:altimeter
+      unit_of_measurement: "m"
 ```
+
+Expected entity IDs: `sensor.nyx_temperature`, `sensor.nyx_humidity`,
+`sensor.nyx_pressure`, `sensor.nyx_pressure_altitude`.
 
 ## SharpCap Integration
 
-SharpCap reads observing conditions from a local HTTP endpoint. The `sharpcap/sharpcap_conditions.py` script serves `http://localhost:5380/conditions` with the JSON format expected by SharpCap:
+SharpCap reads observing conditions from a local HTTP endpoint.
+The `sharpcap/sharpcap_conditions.py` script serves `http://localhost:5380/conditions`
+with the JSON format expected by SharpCap:
 
 ```json
 {

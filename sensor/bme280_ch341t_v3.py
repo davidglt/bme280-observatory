@@ -11,6 +11,12 @@ Publishes temperature, humidity, pressure and ISA pressure altitude
 to Mosquitto / Home Assistant over MQTT.
 Also writes logs/latest_reading.json for local consumers (e.g. SharpCap).
 Configuration via sensor/config.ini (see config.example.ini).
+
+MQTT topic prefix (config.ini): homeassistant/nyx
+  homeassistant/nyx/temperature
+  homeassistant/nyx/humidity
+  homeassistant/nyx/pressure
+  homeassistant/nyx/pressure_altitude
 """
 import configparser
 import json
@@ -231,14 +237,14 @@ def run() -> None:
     port     = cfg.getint( "mqtt", "port",          fallback=1883)
     username = cfg.get(    "mqtt", "username",      fallback="")
     password = cfg.get(    "mqtt", "password",      fallback="")
-    prefix   = cfg.get(    "mqtt", "topic_prefix",  fallback="observatory/bme280")
+    prefix   = cfg.get(    "mqtt", "topic_prefix",  fallback="homeassistant/nyx")
     qos      = cfg.getint( "mqtt", "qos",           fallback=1)
     retain   = cfg.getboolean("mqtt", "retain",     fallback=True)
 
     backend = I2CpyBackend()
     sensor  = BME280(backend, address=address)
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="bme280-observatory")
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="bme280-nyx")
     if username:
         client.username_pw_set(username, password)
     client.connect(broker, port, keepalive=60)

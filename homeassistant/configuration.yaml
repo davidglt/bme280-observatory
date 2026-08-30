@@ -1,41 +1,39 @@
-# Fragmento de configuration.yaml para integrar el BME280 del observatorio via MQTT
-# Pega este bloque en tu configuration.yaml de Home Assistant
-# o incluye el archivo sensor.yaml con: mqtt: !include sensor.yaml
+# Excerpt for configuration.yaml — integrates the NYX BME280 sensor via MQTT.
+# Paste this block into your Home Assistant configuration.yaml,
+# or include sensor.yaml with: mqtt: !include sensor.yaml
 #
-# Topics publicados por sensor/bme280_ch341t_v3.py:
-#   homeassistant/observatory/temperature
-#   homeassistant/observatory/humidity
-#   homeassistant/observatory/pressure
-#   homeassistant/observatory/pressure_altitude  (ISA, varies with weather)
-#
-# Patron consistente con sensores de sotano: homeassistant/basement/...
+# Topics published by sensor/bme280_ch341t_v3.py:
+#   homeassistant/nyx/temperature
+#   homeassistant/nyx/humidity
+#   homeassistant/nyx/pressure
+#   homeassistant/nyx/pressure_altitude  (ISA, varies with weather)
 
 mqtt:
   sensor:
-    - name: observatory_temperature
-      unique_id: "observatory_temperature"
+    - name: NYX Temperature
+      unique_id: "nyx_temperature"
       state_class: measurement
-      state_topic: "homeassistant/observatory/temperature"
+      state_topic: "homeassistant/nyx/temperature"
       device_class: temperature
-      unit_of_measurement: "\xb0C"
+      unit_of_measurement: "°C"
 
-    - name: observatory_humidity
-      unique_id: "observatory_humidity"
+    - name: NYX Humidity
+      unique_id: "nyx_humidity"
       state_class: measurement
-      state_topic: "homeassistant/observatory/humidity"
+      state_topic: "homeassistant/nyx/humidity"
       device_class: humidity
       unit_of_measurement: "%"
 
-    - name: observatory_pressure
-      unique_id: "observatory_pressure"
+    - name: NYX Pressure
+      unique_id: "nyx_pressure"
       state_class: measurement
-      state_topic: "homeassistant/observatory/pressure"
+      state_topic: "homeassistant/nyx/pressure"
       device_class: pressure
       unit_of_measurement: "hPa"
 
-    - name: observatory_pressure_altitude
-      unique_id: "observatory_pressure_altitude"
+    - name: NYX Pressure Altitude
+      unique_id: "nyx_pressure_altitude"
       state_class: measurement
-      state_topic: "homeassistant/observatory/pressure_altitude"
+      state_topic: "homeassistant/nyx/pressure_altitude"
       icon: mdi:altimeter
       unit_of_measurement: "m"

@@ -1,0 +1,36 @@
+# standalone sensor.yaml — use with: mqtt: !include sensor.yaml
+#
+# Topics published by sensor/bme280_ch341t_v3.py (NYX, Windows 11):
+#   homeassistant/nyx/temperature
+#   homeassistant/nyx/humidity
+#   homeassistant/nyx/pressure
+#   homeassistant/nyx/pressure_altitude
+
+sensor:
+  - name: NYX Temperature
+    unique_id: "nyx_temperature"
+    state_class: measurement
+    state_topic: "homeassistant/nyx/temperature"
+    device_class: temperature
+    unit_of_measurement: "°C"
+
+  - name: NYX Humidity
+    unique_id: "nyx_humidity"
+    state_class: measurement
+    state_topic: "homeassistant/nyx/humidity"
+    device_class: humidity
+    unit_of_measurement: "%"
+
+  - name: NYX Pressure
+    unique_id: "nyx_pressure"
+    state_class: measurement
+    state_topic: "homeassistant/nyx/pressure"
+    device_class: pressure
+    unit_of_measurement: "hPa"
+
+  - name: NYX Pressure Altitude
+    unique_id: "nyx_pressure_altitude"
+    state_class: measurement
+    state_topic: "homeassistant/nyx/pressure_altitude"
+    icon: mdi:altimeter
+    unit_of_measurement: "m"
