@@ -11,6 +11,7 @@ sensor:
     unique_id: "nyx_temperature"
     state_class: measurement
     state_topic: "homeassistant/nyx/temperature"
+    expire_after: 120
     device_class: temperature
     unit_of_measurement: "°C"
 
@@ -18,6 +19,7 @@ sensor:
     unique_id: "nyx_humidity"
     state_class: measurement
     state_topic: "homeassistant/nyx/humidity"
+    expire_after: 120
     device_class: humidity
     unit_of_measurement: "%"
 
@@ -25,6 +27,7 @@ sensor:
     unique_id: "nyx_pressure"
     state_class: measurement
     state_topic: "homeassistant/nyx/pressure"
+    expire_after: 120
     device_class: pressure
     unit_of_measurement: "hPa"
 
@@ -32,5 +35,6 @@ sensor:
     unique_id: "nyx_pressure_altitude"
     state_class: measurement
     state_topic: "homeassistant/nyx/pressure_altitude"
+    expire_after: 120
     icon: mdi:altimeter
     unit_of_measurement: "m"

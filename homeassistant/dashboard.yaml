@@ -11,42 +11,42 @@ views:
       - type: entities
         title: Observatory BME280
         entities:
-          - entity: sensor.observatory_temperature
+          - entity: sensor.nyx_temperature
             name: Temperature
             icon: mdi:thermometer
-          - entity: sensor.observatory_humidity
+          - entity: sensor.nyx_humidity
             name: Humidity
             icon: mdi:water-percent
-          - entity: sensor.observatory_pressure
+          - entity: sensor.nyx_pressure
             name: Pressure
             icon: mdi:gauge
-          - entity: sensor.observatory_pressure_altitude
+          - entity: sensor.nyx_pressure_altitude
             name: Pressure Altitude (ISA)
             icon: mdi:altimeter
 
       - type: sensor
-        entity: sensor.observatory_temperature
+        entity: sensor.nyx_temperature
         name: Temperature
         graph: line
         hours_to_show: 24
         detail: 2
 
       - type: sensor
-        entity: sensor.observatory_humidity
+        entity: sensor.nyx_humidity
         name: Humidity
         graph: line
         hours_to_show: 24
         detail: 2
 
       - type: sensor
-        entity: sensor.observatory_pressure
+        entity: sensor.nyx_pressure
         name: Pressure
         graph: line
         hours_to_show: 24
         detail: 2
 
       - type: sensor
-        entity: sensor.observatory_pressure_altitude
+        entity: sensor.nyx_pressure_altitude
         name: Pressure Altitude (ISA)
         graph: line
         hours_to_show: 24

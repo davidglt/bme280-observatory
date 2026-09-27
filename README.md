@@ -6,10 +6,14 @@ Reads temperature, humidity, and pressure from a **BME280** sensor connected via
 
 | Component | Description |
 |---|---|
-| Sensor | BME280 on GY-BMEP 4-pin module (I2C, address 0x76) |
+| Sensor | BME280 on GY-BMEP 4-pin module (I2C, address 0x76 or 0x77) |
 | USB Adapter | CH341T_V3 (USB→I2C, driver CH341PAR_INST.EXE) |
 | PC | Windows 11 — NYX |
 | Network | MQTT broker (Mosquitto on Home Assistant or standalone) |
+
+The reader requires a BME280 (chip ID `0x60`). A BMP280 is rejected because it
+does not measure humidity; the service never publishes a synthetic zero
+humidity value.
 
 ## Architecture
 
@@ -39,6 +43,14 @@ Reads temperature, humidity, and pressure from a **BME280** sensor connected via
 | `homeassistant/nyx/humidity` | float | `72.10` |
 | `homeassistant/nyx/pressure` | float | `1013.25` (absolute, hPa) |
 | `homeassistant/nyx/pressure_altitude` | float | `312.5` (ISA altitude, m) |
+| `homeassistant/nyx/last_update` | Unix timestamp | `178...` |
+
+The retained `last_update` timestamp identifies the age of the complete sensor
+sample. The SharpCap HTTP endpoint returns `503 Service Unavailable` when no
+complete sample has arrived or the last sample is more than 120 seconds old.
+Home Assistant MQTT entities expire after 120 seconds without an update.
+The SharpCap CSV logger also skips missing, malformed, non-finite, or older
+than 120-second `latest_reading.json` data.
 
 ## Barometric Correction
 
@@ -76,7 +88,8 @@ bme280-observatory/
 │   ├── bme280_ch341t_v3.py     # BME280 reading via CH341T_V3 + MQTT publishing
 │   └── config.example.ini      # Configuration template (no secrets)
 ├── sharpcap/
-│   └── sharpcap_conditions.py  # HTTP endpoint for SharpCap Observing Conditions
+│   ├── sharpcap_conditions.py  # Local-network HTTP endpoint for conditions
+│   └── log_conditions.py       # Fresh-reading logger for SharpCap
 ├── homeassistant/
 │   ├── configuration.yaml      # MQTT sensor block for configuration.yaml
 │   └── sensor.yaml             # Standalone MQTT sensor file (!include sensor.yaml)
@@ -169,8 +182,14 @@ Expected entity IDs: `sensor.nyx_temperature`, `sensor.nyx_humidity`,
 ## SharpCap Integration
 
 SharpCap reads observing conditions from a local HTTP endpoint.
-The `sharpcap/sharpcap_conditions.py` script serves `http://localhost:5380/conditions`
-with the JSON format expected by SharpCap:
+The `sharpcap/sharpcap_conditions.py` service listens on all network interfaces
+on the configured port (default `5380`). On the observatory PC, SharpCap can use
+`http://localhost:5380/conditions`; another trusted local-network client can
+use `http://<observatory-PC-IP>:5380/conditions`. Allow the configured port
+through the Windows firewall only for the trusted local network.
+
+The endpoint serves only complete readings newer than 120 seconds with the JSON
+format expected by SharpCap:
 
 ```json
 {
@@ -187,6 +206,9 @@ In SharpCap → **Tools → Observing Conditions → Custom HTTP Source** → `h
 See `requirements/requirements.txt`. Main packages:
 - `i2cpy` — I2C communication with CH341T_V3
 - `paho-mqtt` — MQTT client
+
+The SharpCap conditions server reads the same INI configuration as the sensor;
+it does not require a separate YAML file or PyYAML.
 
 ## License
 

@@ -62,6 +62,7 @@ def _write_latest(data: dict, alt: float) -> None:
     os.makedirs(LOG_DIR, exist_ok=True)
     payload = {
         "timestamp":           time.strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp_epoch":     time.time(),
         "temperature_c":       data["temperature"],
         "humidity_pct":        data["humidity"],
         "pressure_hpa":        data["pressure"],
@@ -138,11 +139,12 @@ class BME280:
         self._bus  = backend
         self._addr = address
         chip_id    = self._bus.read_reg(address, self.REG_ID, 1)[0]
-        if chip_id not in (0x60, 0x58):
+        if chip_id != 0x60:
             raise RuntimeError(
-                "Unexpected chip ID 0x%02X at 0x%02X" % (chip_id, address)
+                "Expected a BME280 chip ID 0x60, got 0x%02X at 0x%02X. "
+                "BMP280 sensors do not provide humidity."
+                % (chip_id, address)
             )
-        self._has_hum = (chip_id == 0x60)
         log.info("BME280 chip ID 0x%02X at I2C 0x%02X", chip_id, address)
         self._load_calibration()
 
@@ -199,22 +201,19 @@ class BME280:
             pres = (p + (v1 + v2 + self.P7) / 16.0) / 100.0
 
         # Humidity
-        if not self._has_hum:
+        h = t_fine - 76800.0
+        if h == 0.0:
             humi = 0.0
         else:
-            h = t_fine - 76800.0
-            if h == 0.0:
-                humi = 0.0
-            else:
-                h = (hraw - (self.H4 * 64.0 + self.H5 / 16384.0 * h)) * (
-                    self.H2 / 65536.0 * (
-                        1.0 + self.H6 / 67108864.0 * h * (
-                            1.0 + self.H3 / 67108864.0 * h
-                        )
+            h = (hraw - (self.H4 * 64.0 + self.H5 / 16384.0 * h)) * (
+                self.H2 / 65536.0 * (
+                    1.0 + self.H6 / 67108864.0 * h * (
+                        1.0 + self.H3 / 67108864.0 * h
                     )
                 )
-                h    *= 1.0 - self.H1 * h / 524288.0
-                humi  = max(0.0, min(100.0, h))
+            )
+            h *= 1.0 - self.H1 * h / 524288.0
+            humi = max(0.0, min(100.0, h))
 
         return {
             "temperature": round(temp, 2),
@@ -258,6 +257,12 @@ def run() -> None:
             for key, val in data.items():
                 client.publish("%s/%s" % (prefix, key), str(val), qos=qos, retain=retain)
             client.publish("%s/pressure_altitude" % prefix, str(alt), qos=qos, retain=retain)
+            client.publish(
+                "%s/last_update" % prefix,
+                str(time.time()),
+                qos=qos,
+                retain=retain,
+            )
             _write_latest(data, alt)
             log.info(
                 "T=%.2f%sC  H=%.3f%%  P=%.3fhPa  Alt=%.1fm",

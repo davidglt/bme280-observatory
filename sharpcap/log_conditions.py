@@ -9,7 +9,7 @@
 # What it does:
 #   - Every 60 s reads logs/latest_reading.json written by bme280_ch341t_v3.py
 #   - Always appends to:
-#       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repo log acumulado)
+#       C:\astro\bme280-observatory\logs\sharpcap_conditions.csv  (repository log)
 #   - Appends to session CSV following these rules:
 #       1. At startup: only activates if SharpCap has already created TODAY's
 #          folder (YYYY-MM-DD). Folders from previous days are ignored.
@@ -27,6 +27,7 @@
 import clr
 import json
 import os
+import sys
 import datetime
 
 clr.AddReference("System.Windows.Forms")
@@ -38,11 +39,17 @@ from System.Threading import Thread, ThreadStart, ApartmentState
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT         = r"C:\astro\bme280-observatory"
+_SCRIPT_DIRECTORY  = os.path.dirname(os.path.abspath(__file__))
 _LATEST_JSON       = os.path.join(_REPO_ROOT, "logs", "latest_reading.json")
 _REPO_CSV          = os.path.join(_REPO_ROOT, "logs", "sharpcap_conditions.csv")
 
 _CSV_HEADER        = "timestamp,temperature_c,humidity_pct,pressure_hpa,pressure_altitude_m\n"
 _SAMPLE_INTERVAL_S = 60
+
+if _SCRIPT_DIRECTORY not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIRECTORY)
+
+from reading_utils import is_reading_fresh
 
 
 def _today_capture_csv():
@@ -88,9 +95,10 @@ def _warn(msg):  _log("WARNING", msg)
 def _read_latest():
     try:
         with open(_LATEST_JSON, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception:
+            reading = json.load(fh)
+    except (IOError, OSError, ValueError, TypeError):
         return None
+    return reading if is_reading_fresh(reading) else None
 
 
 def _append_csv(path, row):
@@ -148,7 +156,7 @@ def conditions():
     reading = _read_latest()
     if reading is None:
         MessageBox.Show(
-            "No data available.\nIs bme280_ch341t_v3.py running?",
+            "No fresh data available.\nIs bme280_ch341t_v3.py running?",
             "Observatory Conditions",
             MessageBoxButtons.OK,
             MessageBoxIcon.Warning,
@@ -204,7 +212,10 @@ def _sampling_loop():
                     reading["pressure_altitude_m"],
                 ))
         else:
-            _warn("latest_reading.json not found. Next check in %ds..." % _SAMPLE_INTERVAL_S)
+            _warn(
+                "latest_reading.json is missing, invalid or stale. "
+                "Next check in %ds..." % _SAMPLE_INTERVAL_S
+            )
         time.sleep(_SAMPLE_INTERVAL_S)
 
 

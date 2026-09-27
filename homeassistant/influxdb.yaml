@@ -1,19 +1,19 @@
-# Fragmento para persistir los sensores del observatorio en InfluxDB 2.x
-# Referencia: https://www.home-assistant.io/integrations/influxdb/
+# Configuration fragment for persisting observatory sensors in InfluxDB 2.x.
+# Reference: https://www.home-assistant.io/integrations/influxdb/
 #
-# En configuration.yaml añade:
+# Add to configuration.yaml:
 #   influxdb: !include influxdb.yaml
 
 api_version: 2
 host: localhost
 port: 8086
 token: !secret influxdb_token
-organization: mi_organizacion
+organization: my_organization
 bucket: observatory
 
 include:
   entity_globs:
-    - sensor.observatorio_*
+    - sensor.nyx_*
 
 default_measurement: sensor
 
