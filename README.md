@@ -43,14 +43,21 @@ humidity value.
 | `homeassistant/nyx/humidity` | float | `72.10` |
 | `homeassistant/nyx/pressure` | float | `1013.25` (absolute, hPa) |
 | `homeassistant/nyx/pressure_altitude` | float | `312.5` (ISA altitude, m) |
-| `homeassistant/nyx/last_update` | Unix timestamp | `178...` |
+| `homeassistant/nyx/reading` | JSON | Complete sample with values and Unix timestamp |
 
-The retained `last_update` timestamp identifies the age of the complete sensor
-sample. The SharpCap HTTP endpoint returns `503 Service Unavailable` when no
-complete sample has arrived or the last sample is more than 120 seconds old.
+Home Assistant continues to use the individual numeric topics. The SharpCap
+HTTP service consumes the retained `/reading` JSON topic so the values and
+timestamp are always from one sensor sample. It returns
+`503 Service Unavailable` when no complete sample has arrived or the last
+sample is more than 120 seconds old.
 Home Assistant MQTT entities expire after 120 seconds without an update.
 The SharpCap CSV logger also skips missing, malformed, non-finite, or older
 than 120-second `latest_reading.json` data.
+
+The sensor service retries CH341T_V3/BME280 initialization and I2C read errors
+with exponential backoff (2 to 60 seconds). It rejects readings outside the
+physical operating ranges before writing or publishing them. Shutdown signals
+close the MQTT client and I2C backend cleanly.
 
 ## Barometric Correction
 
@@ -89,6 +96,7 @@ bme280-observatory/
 │   └── config.example.ini      # Configuration template (no secrets)
 ├── sharpcap/
 │   ├── sharpcap_conditions.py  # Local-network HTTP endpoint for conditions
+│   ├── reading_utils.py        # Shared sample freshness validation
 │   └── log_conditions.py       # Fresh-reading logger for SharpCap
 ├── homeassistant/
 │   ├── configuration.yaml      # MQTT sensor block for configuration.yaml
@@ -102,6 +110,8 @@ bme280-observatory/
 │   └── bme280-observatory.xml     # Task Scheduler task definition
 ├── requirements/
 │   └── requirements.txt
+├── tests/
+│   └── test_sensor_conditions.py
 └── README.md
 ```
 

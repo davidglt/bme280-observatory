@@ -1,5 +1,8 @@
 import json
+import signal
+import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -26,7 +29,32 @@ class FakeBackend:
         raise AssertionError(f"Unexpected register read: {register:#x}")
 
 
+class FakeStopEvent:
+    def __init__(self, stop_after_waits):
+        self.stop_after_waits = stop_after_waits
+        self.waits = []
+        self.stopped = False
+
+    def is_set(self):
+        return self.stopped
+
+    def set(self):
+        self.stopped = True
+
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        if len(self.waits) >= self.stop_after_waits:
+            self.stopped = True
+        return self.stopped
+
+
 class SensorConditionsTests(unittest.TestCase):
+    def test_i2c_backend_open_failure_raises_retryable_error(self):
+        i2cpy = mock.Mock(I2C=mock.Mock(side_effect=OSError("adapter unavailable")))
+        with mock.patch.dict(sys.modules, {"i2cpy": i2cpy}):
+            with self.assertRaisesRegex(RuntimeError, "Could not open CH341T_V3"):
+                sensor.I2CpyBackend()
+
     def test_bmp280_is_rejected_instead_of_reporting_fake_humidity(self):
         with self.assertRaisesRegex(RuntimeError, "BMP280 sensors do not provide humidity"):
             sensor.BME280(FakeBackend(0x58))
@@ -53,6 +81,139 @@ class SensorConditionsTests(unittest.TestCase):
 
         self.assertAlmostEqual(payload["timestamp_epoch"], time.time(), delta=2)
         self.assertEqual(payload["temperature_c"], 18.5)
+
+    def test_sensor_reading_validation_rejects_implausible_values(self):
+        valid = {"temperature": 18.5, "humidity": 65.2, "pressure": 1013.4}
+        sensor.validate_reading(valid)
+
+        for key, value in (
+            ("temperature", -41),
+            ("temperature", float("nan")),
+            ("humidity", 101),
+            ("pressure", 0),
+        ):
+            with self.subTest(key=key, value=value):
+                sample = valid.copy()
+                sample[key] = value
+                with self.assertRaises(sensor.InvalidReadingError):
+                    sensor.validate_reading(sample)
+
+    def test_mqtt_json_payload_keeps_values_and_timestamp_in_one_sample(self):
+        data = {"temperature": 18.5, "humidity": 65.2, "pressure": 1013.4}
+
+        payload = json.loads(
+            sensor.build_reading_payload(data, 12.3, 1000.0)
+        )
+
+        self.assertEqual(
+            payload,
+            {
+                "timestamp_epoch": 1000.0,
+                "temperature_c": 18.5,
+                "humidity_pct": 65.2,
+                "pressure_hpa": 1013.4,
+                "pressure_altitude_m": 12.3,
+            },
+        )
+
+    def test_sensor_service_retries_initialization_and_read_errors(self):
+        config = sensor.configparser.ConfigParser()
+        config.read_dict(
+            {
+                "bme280": {"i2c_address": "0x76", "interval_seconds": "30"},
+                "mqtt": {
+                    "host": "broker.local",
+                    "port": "1883",
+                    "username": "",
+                    "password": "",
+                    "topic_prefix": "homeassistant/nyx",
+                    "qos": "1",
+                    "retain": "true",
+                },
+            }
+        )
+        stop_event = FakeStopEvent(stop_after_waits=4)
+        first_backend = mock.Mock()
+        recovered_backend = mock.Mock()
+        final_backend = mock.Mock()
+        disconnected_sensor = mock.Mock()
+        disconnected_sensor.read.side_effect = OSError("temporary I2C read error")
+        recovered_sensor = mock.Mock()
+        recovered_sensor.read.return_value = {
+            "temperature": 18.5,
+            "humidity": 65.2,
+            "pressure": 1013.4,
+        }
+        client = mock.Mock()
+        client.publish.return_value.rc = sensor.mqtt.MQTT_ERR_SUCCESS
+
+        with (
+            mock.patch.object(sensor, "_load_config", return_value=config),
+            mock.patch.object(sensor.threading, "Event", return_value=stop_event),
+            mock.patch.object(sensor.signal, "getsignal", return_value=signal.SIG_DFL),
+            mock.patch.object(sensor.signal, "signal"),
+            mock.patch.object(
+                sensor,
+                "I2CpyBackend",
+                side_effect=[
+                    RuntimeError("temporary I2C adapter error"),
+                    first_backend,
+                    recovered_backend,
+                    final_backend,
+                ],
+            ),
+            mock.patch.object(
+                sensor,
+                "BME280",
+                side_effect=[
+                    RuntimeError("temporary I2C initialization error"),
+                    disconnected_sensor,
+                    recovered_sensor,
+                ],
+            ) as sensor_class,
+            mock.patch.object(sensor.mqtt, "Client", return_value=client),
+            mock.patch.object(sensor, "_write_latest") as write_latest,
+            mock.patch.object(sensor, "pressure_altitude_isa", return_value=12.3),
+        ):
+            sensor.run()
+
+        self.assertEqual(sensor_class.call_count, 3)
+        self.assertEqual(stop_event.waits, [2, 4, 8, 30])
+        first_backend.close.assert_called_once()
+        recovered_backend.close.assert_called_once()
+        final_backend.close.assert_called_once()
+        client.disconnect.assert_called_once()
+        client.loop_stop.assert_called_once()
+        write_latest.assert_called_once()
+        published_topics = [
+            call.args[0] for call in client.publish.call_args_list
+        ]
+        self.assertIn("homeassistant/nyx/reading", published_topics)
+
+    def test_sharpcap_mqtt_retries_initial_connection_failure(self):
+        config = sensor.configparser.ConfigParser()
+        config.read_dict(
+            {
+                "mqtt": {
+                    "host": "broker.local",
+                    "port": "1883",
+                    "topic_prefix": "homeassistant/nyx",
+                }
+            }
+        )
+        client = mock.Mock()
+        client.connect.side_effect = [OSError("broker unavailable"), None]
+
+        with (
+            mock.patch.object(http_conditions.mqtt, "Client", return_value=client),
+            mock.patch.object(http_conditions.time, "sleep") as sleep,
+        ):
+            http_conditions.mqtt_thread(config)
+
+        self.assertEqual(client.connect.call_count, 2)
+        client.connect.assert_called_with("broker.local", 1883, keepalive=60)
+        client.disconnect.assert_called_once()
+        sleep.assert_called_once_with(2)
 
     def test_sharpcap_server_reads_the_shared_ini_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -140,6 +301,27 @@ class SensorConditionsTests(unittest.TestCase):
                 http_conditions.current_conditions_payload(),
                 expected,
             )
+
+    def test_http_server_parses_only_complete_fresh_mqtt_samples(self):
+        sample = {
+            "timestamp_epoch": time.time(),
+            "temperature_c": 18.0,
+            "humidity_pct": 60.0,
+            "pressure_hpa": 1013.0,
+            "pressure_altitude_m": 0.0,
+        }
+        payload, timestamp = http_conditions.parse_reading_message(
+            json.dumps(sample).encode()
+        )
+        self.assertEqual(
+            payload,
+            {"Temperature": 18.0, "Humidity": 60.0, "Pressure": 1013.0},
+        )
+        self.assertEqual(timestamp, sample["timestamp_epoch"])
+
+        sample["humidity_pct"] = None
+        with self.assertRaisesRegex(ValueError, "incomplete, invalid or stale"):
+            http_conditions.parse_reading_message(json.dumps(sample).encode())
 
     def test_reading_utils_rejects_missing_stale_and_non_finite_data(self):
         reading = {

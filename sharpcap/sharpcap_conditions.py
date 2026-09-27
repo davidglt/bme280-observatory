@@ -15,6 +15,11 @@ from pathlib import Path
 
 import paho.mqtt.client as mqtt
 
+if __package__:
+    from .reading_utils import is_reading_fresh
+else:
+    from reading_utils import is_reading_fresh
+
 log = logging.getLogger(__name__)
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPOSITORY_ROOT / "sensor" / "config.ini"
@@ -65,6 +70,26 @@ def current_conditions_payload():
     return payload if is_fresh else None
 
 
+def parse_reading_message(payload):
+    """Parse a single complete MQTT sample and reject invalid or stale data."""
+    try:
+        reading = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid BME280 reading message: {exc}") from exc
+
+    if not is_reading_fresh(reading):
+        raise ValueError("BME280 reading message is incomplete, invalid or stale.")
+
+    return (
+        {
+            "Temperature": reading["temperature_c"],
+            "Humidity": reading["humidity_pct"],
+            "Pressure": reading["pressure_hpa"],
+        },
+        reading["timestamp_epoch"],
+    )
+
+
 class ConditionsHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # suppress default access log
         pass
@@ -97,51 +122,31 @@ class ConditionsHandler(BaseHTTPRequestHandler):
 def mqtt_thread(cfg):
     m_cfg = cfg["mqtt"]
     prefix = m_cfg.get("topic_prefix", "homeassistant/nyx")
-    key_map = {
-        f"{prefix}/temperature": "Temperature",
-        f"{prefix}/humidity": "Humidity",
-        f"{prefix}/pressure": "Pressure",
-    }
-    sample_timestamp_topic = f"{prefix}/last_update"
+    reading_topic = f"{prefix}/reading"
 
     def on_connect(client, userdata, flags, reason_code, properties):
         if reason_code == 0:
-            for topic in key_map:
-                client.subscribe(topic)
-            client.subscribe(sample_timestamp_topic)
-            log.info("MQTT subscribed to %s/#", prefix)
+            client.subscribe(reading_topic)
+            log.info("MQTT subscribed to %s", reading_topic)
         else:
             log.error("MQTT connect failed: %s", reason_code)
 
     def on_message(client, userdata, msg):
         global _latest_received_at, _latest_sample_timestamp
 
-        if msg.topic == sample_timestamp_topic:
-            try:
-                timestamp = float(msg.payload.decode())
-                if not math.isfinite(timestamp):
-                    raise ValueError("non-finite sample timestamp")
-                with _lock:
-                    _latest_sample_timestamp = timestamp
-                    _latest_received_at = time.monotonic()
-            except (UnicodeDecodeError, ValueError) as exc:
-                log.warning(
-                    "Ignoring invalid MQTT sample timestamp for %s: %s",
-                    msg.topic,
-                    exc,
-                )
+        if msg.topic != reading_topic:
             return
 
-        key = key_map.get(msg.topic)
-        if key:
-            try:
-                value = float(msg.payload.decode())
-                if not math.isfinite(value):
-                    raise ValueError("non-finite reading")
-                with _lock:
-                    _latest[key] = value
-            except (UnicodeDecodeError, ValueError) as exc:
-                log.warning("Ignoring invalid MQTT reading for %s: %s", msg.topic, exc)
+        try:
+            payload, sample_timestamp = parse_reading_message(msg.payload)
+        except ValueError as exc:
+            log.warning("Ignoring invalid MQTT reading for %s: %s", msg.topic, exc)
+            return
+
+        with _lock:
+            _latest.update(payload)
+            _latest_sample_timestamp = sample_timestamp
+            _latest_received_at = time.monotonic()
 
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
@@ -151,12 +156,28 @@ def mqtt_thread(cfg):
         client.username_pw_set(m_cfg["username"], m_cfg.get("password", ""))
     client.on_connect = on_connect
     client.on_message = on_message
-    client.connect(
-        m_cfg.get("host", "localhost"),
-        m_cfg.getint("port", fallback=1883),
-        keepalive=60,
-    )
-    client.loop_forever()
+    retry_delay = 2
+    while True:
+        try:
+            client.connect(
+                m_cfg.get("host", "localhost"),
+                m_cfg.getint("port", fallback=1883),
+                keepalive=60,
+            )
+            client.loop_forever()
+        except Exception:
+            log.exception(
+                "MQTT listener stopped unexpectedly; retrying in %d seconds.",
+                retry_delay,
+            )
+            try:
+                client.disconnect()
+            except Exception:
+                log.exception("Could not reset the MQTT client before retrying.")
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, 60)
+        else:
+            break
 
 
 def run():
