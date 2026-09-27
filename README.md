@@ -220,6 +220,13 @@ See `requirements/requirements.txt`. Main packages:
 The SharpCap conditions server reads the same INI configuration as the sensor;
 it does not require a separate YAML file or PyYAML.
 
+## Author
+
+David González López-Tercero
+
 ## License
 
-GPL-3.0-or-later — David González López-Tercero
+Copyright © 2026 David González López-Tercero.
+
+This project is licensed under the GNU General Public License v3.0 or later
+(GPL-3.0-or-later). See [LICENSE.txt](LICENSE.txt) for the full text.

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: ascii -*-
-# SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
+# -*- coding: utf-8 -*-
+# Created: 2026-08-29
+# Author: David González López-Tercero <davidglt@dragonit.es>
+# SPDX-FileCopyrightText: 2026 David González López-Tercero <davidglt@dragonit.es>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """BME280 reader via CH341T_V3 USB-I2C adapter on Windows 11 (NYX).
@@ -155,6 +157,7 @@ def _write_latest(
 # ---------------------------------------------------------------------------
 
 def _load_config() -> configparser.ConfigParser:
+    """Load the local INI configuration or the checked-in example."""
     cfg = configparser.ConfigParser()
     path = CONFIG_PATH if os.path.exists(CONFIG_PATH) else CONFIG_EXAMPLE_PATH
     cfg.read(path, encoding="utf-8")
@@ -170,6 +173,7 @@ class I2CpyBackend:
     """High-level wrapper using i2cpy (pip install i2cpy)."""
 
     def __init__(self):
+        """Open the CH341T_V3 adapter and raise an actionable error on failure."""
         try:
             import i2cpy
         except ImportError as exc:
@@ -186,12 +190,15 @@ class I2CpyBackend:
         log.info("i2cpy backend initialised (CH341T_V3 driver)")
 
     def read_reg(self, addr: int, reg: int, length: int) -> bytes:
+        """Read a contiguous range of bytes from an I2C register."""
         return bytes(self._i2c.readfrom_mem(addr, reg, length))
 
     def write_reg(self, addr: int, reg: int, data: bytes) -> None:
+        """Write bytes to an I2C register."""
         self._i2c.writeto_mem(addr, reg, data)
 
     def close(self) -> None:
+        """Release the adapter handle when the backend exposes a close method."""
         fn = getattr(self._i2c, "close", None) or getattr(self._i2c, "deinit", None)
         if fn:
             try:
@@ -214,6 +221,7 @@ class BME280:
     REG_DATA      = 0xF7
 
     def __init__(self, backend, address: int = 0x76):
+        """Validate the chip ID and load compensation coefficients."""
         self._bus  = backend
         self._addr = address
         chip_id    = self._bus.read_reg(address, self.REG_ID, 1)[0]
@@ -227,6 +235,7 @@ class BME280:
         self._load_calibration()
 
     def _load_calibration(self) -> None:
+        """Load and unpack Bosch temperature, pressure, and humidity coefficients."""
         raw = self._bus.read_reg(self._addr, 0x88, 24)
         (
             self.T1, self.T2, self.T3,
@@ -245,6 +254,7 @@ class BME280:
         log.info("Calibration loaded OK")
 
     def _forced(self) -> None:
+        """Trigger a forced-mode sample with humidity measurement enabled."""
         self._bus.write_reg(self._addr, self.REG_CTRL_HUM,  b"\x01")
         self._bus.write_reg(self._addr, self.REG_CTRL_MEAS, b"\x25")
         time.sleep(0.1)
@@ -305,6 +315,7 @@ class BME280:
 # ---------------------------------------------------------------------------
 
 def run() -> None:
+    """Publish validated sensor samples and recover from transient failures."""
     cfg = _load_config()
 
     address  = int(cfg.get("bme280", "i2c_address",     fallback="0x76"), 16)
@@ -324,6 +335,7 @@ def run() -> None:
     previous_handlers = {}
 
     def request_shutdown(signum, frame):
+        """Set the stop event in response to a process termination signal."""
         log.info("Shutdown requested (signal %s).", signum)
         stop_event.set()
 

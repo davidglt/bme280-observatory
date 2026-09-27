@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
-# -*- coding: ascii -*-
-# SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
+# -*- coding: utf-8 -*-
+# Created: 2026-08-29
+# Author: David González López-Tercero <davidglt@dragonit.es>
+# SPDX-FileCopyrightText: 2026 David González López-Tercero <davidglt@dragonit.es>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """
@@ -61,6 +63,7 @@ PRES_MAX   = 1100.0   # hPa
 # ---------------------------------------------------------------------------
 
 def hex8(v):
+    """Format a register or value as a two-digit hexadecimal byte."""
     return f"0x{v:02X}"
 
 
@@ -72,6 +75,7 @@ class I2CpyBackend:
     """Uses the i2cpy library (pip install i2cpy)."""
 
     def __init__(self):
+        """Open the CH341T_V3 I2C adapter through i2cpy."""
         try:
             import i2cpy
         except ImportError:
@@ -87,16 +91,20 @@ class I2CpyBackend:
         print("[OK] i2cpy backend initialised (CH341T_V3 driver)")
 
     def read_reg_byte(self, addr, reg):
+        """Read one byte from a device register."""
         data = self._i2c.readfrom_mem(addr, reg, 1)
         return data[0]
 
     def read_regs(self, addr, start_reg, length):
+        """Read a contiguous range of device registers."""
         return bytes(self._i2c.readfrom_mem(addr, start_reg, length))
 
     def write_reg(self, addr, reg, data):
+        """Write bytes to a device register."""
         self._i2c.writeto_mem(addr, reg, bytes(data))
 
     def close(self):
+        """Close the adapter handle when the backend supports it."""
         close_fn = getattr(self._i2c, "close", None) or getattr(self._i2c, "deinit", None)
         if close_fn is not None:
             try:
@@ -110,19 +118,23 @@ class I2CpyBackend:
 # ---------------------------------------------------------------------------
 
 def read_chip_id(bus, addr):
+    """Return the chip identifier read from the sensor."""
     return bus.read_reg_byte(addr, REG_ID)
 
 
 def soft_reset(bus, addr):
+    """Issue the Bosch sensor soft-reset command and allow it to settle."""
     bus.write_reg(addr, REG_RESET, [0xB6])
     time.sleep(0.02)
 
 
 def read_status(bus, addr):
+    """Return the sensor status register."""
     return bus.read_reg_byte(addr, REG_STATUS)
 
 
 def read_calibration_raw(bus, addr):
+    """Read the temperature/pressure and humidity calibration blocks."""
     calib_a  = bus.read_regs(addr, 0x88, 24)
     calib_h1 = bus.read_regs(addr, 0xA1, 1)
     calib_h  = bus.read_regs(addr, 0xE1, 7)
@@ -149,12 +161,14 @@ def parse_calibration(calib_a, calib_h1, calib_h):
 
 
 def configure_forced(bus, addr):
+    """Configure humidity and trigger a forced sensor measurement."""
     bus.write_reg(addr, REG_CTRL_HUM,  [0x01])
     bus.write_reg(addr, REG_CTRL_MEAS, [0x25])
     time.sleep(0.05)
 
 
 def read_raw(bus, addr):
+    """Read uncompensated pressure, temperature, and humidity ADC values."""
     data  = bus.read_regs(addr, REG_DATA, 8)
     p_raw = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4)
     t_raw = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
@@ -207,6 +221,7 @@ def compensate(p_raw, t_raw, h_raw, c, has_hum):
 
 
 def detect_devices(bus):
+    """Probe supported I2C addresses and return recognized BME/BMP sensors."""
     found = []
     for addr in I2C_ADDR_CANDIDATES:
         try:
@@ -222,6 +237,7 @@ def detect_devices(bus):
 
 
 def check_calibration(calib_a, calib_h1, calib_h):
+    """Reject empty calibration data and report the calibration block summary."""
     all_bytes = calib_a + calib_h1 + calib_h
     if all(x == 0x00 for x in all_bytes):
         raise RuntimeError("Calibration block is all 0x00")
@@ -234,6 +250,7 @@ def check_calibration(calib_a, calib_h1, calib_h):
 
 
 def plausibility_notes(p_raw, t_raw, h_raw):
+    """Describe suspicious raw ADC values without rejecting the probe run."""
     notes = []
     if p_raw in (0, 0x80000):
         notes.append("pressure raw suspicious")
@@ -245,6 +262,7 @@ def plausibility_notes(p_raw, t_raw, h_raw):
 
 
 def plausibility_notes_compensated(temp, humi, pres, has_hum):
+    """Report compensated measurements outside the sensor's expected ranges."""
     notes = []
     if not (TEMP_MIN_C <= temp <= TEMP_MAX_C):
         notes.append(f"temperature {temp} out of range [{TEMP_MIN_C}, {TEMP_MAX_C}] degC")
@@ -260,6 +278,7 @@ def plausibility_notes_compensated(temp, humi, pres, has_hum):
 # ---------------------------------------------------------------------------
 
 def main():
+    """Run the complete I2C discovery, calibration, and reading diagnostic."""
     bus = None
     try:
         print("=== BME280 CH341T_V3 probe ===\n")

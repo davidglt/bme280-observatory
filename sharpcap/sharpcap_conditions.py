@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Created: 2026-08-29
+# Author: David González López-Tercero <davidglt@dragonit.es>
+# SPDX-FileCopyrightText: 2026 David González López-Tercero <davidglt@dragonit.es>
+# SPDX-License-Identifier: GPL-3.0-or-later
 """HTTP server exposing fresh BME280 data to local-network consumers.
 
 SharpCap → Tools → Observing Conditions → Custom HTTP Source:
@@ -44,6 +49,7 @@ def load_config(path):
 
 
 def _config_path():
+    """Select the private INI configuration or its checked-in example."""
     return CONFIG_PATH if CONFIG_PATH.is_file() else CONFIG_EXAMPLE_PATH
 
 
@@ -91,10 +97,14 @@ def parse_reading_message(payload):
 
 
 class ConditionsHandler(BaseHTTPRequestHandler):
+    """Serve the current complete sample to SharpCap over HTTP."""
+
     def log_message(self, fmt, *args):  # suppress default access log
+        """Keep the standard HTTP access log out of the console."""
         pass
 
     def do_GET(self):
+        """Return fresh conditions, or an error for stale/missing data."""
         if self.path in ("/conditions", "/conditions/"):
             payload = current_conditions_payload()
             if payload is None:
@@ -120,11 +130,13 @@ class ConditionsHandler(BaseHTTPRequestHandler):
 
 
 def mqtt_thread(cfg):
+    """Subscribe to coherent BME280 samples and cache their latest values."""
     m_cfg = cfg["mqtt"]
     prefix = m_cfg.get("topic_prefix", "homeassistant/nyx")
     reading_topic = f"{prefix}/reading"
 
     def on_connect(client, userdata, flags, reason_code, properties):
+        """Subscribe to the sample topic after a successful broker connection."""
         if reason_code == 0:
             client.subscribe(reading_topic)
             log.info("MQTT subscribed to %s", reading_topic)
@@ -132,6 +144,7 @@ def mqtt_thread(cfg):
             log.error("MQTT connect failed: %s", reason_code)
 
     def on_message(client, userdata, msg):
+        """Validate a complete reading before updating the shared HTTP payload."""
         global _latest_received_at, _latest_sample_timestamp
 
         if msg.topic != reading_topic:
@@ -181,6 +194,7 @@ def mqtt_thread(cfg):
 
 
 def run():
+    """Start the MQTT listener and LAN-accessible SharpCap HTTP server."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config_path = _config_path()
     cfg = load_config(config_path)

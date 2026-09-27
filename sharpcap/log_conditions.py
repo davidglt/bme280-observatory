@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 # SharpCap startup script: Observatory Conditions Logger
-# SPDX-FileCopyrightText: 2026 David Gonzalez Lopez-Tercero <davidglt@dragonit.es>
+# Created: 2026-08-29
+# Author: David González López-Tercero <davidglt@dragonit.es>
+# SPDX-FileCopyrightText: 2026 David González López-Tercero <davidglt@dragonit.es>
 # SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Log fresh observatory conditions to repository and SharpCap session CSVs."""
+
 #
 # Installation:
 #   SharpCap > File > Settings > Startup Scripts > Add > select this file
@@ -76,6 +81,7 @@ def _today_capture_csv():
 # ---------------------------------------------------------------------------
 
 def _log(level, msg):
+    """Write a timestamped message to the SharpCap scripting log."""
     ts   = datetime.datetime.now().strftime("%H:%M:%S")
     line = "{}  {:8s}  [BME280]  {}".format(ts, level, msg)
     print(line)
@@ -84,15 +90,26 @@ def _log(level, msg):
     except Exception:
         pass
 
-def _info(msg):  _log("INFO",    msg)
-def _error(msg): _log("ERROR",   msg)
-def _warn(msg):  _log("WARNING", msg)
+def _info(msg):
+    """Log an informational message."""
+    _log("INFO", msg)
+
+
+def _error(msg):
+    """Log an error message."""
+    _log("ERROR", msg)
+
+
+def _warn(msg):
+    """Log a warning message."""
+    _log("WARNING", msg)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _read_latest():
+    """Return the latest fresh sensor sample, or None when unavailable."""
     try:
         with open(_LATEST_JSON, "r", encoding="utf-8") as fh:
             reading = json.load(fh)
@@ -102,6 +119,7 @@ def _read_latest():
 
 
 def _append_csv(path, row):
+    """Append a CSV row, writing the file header when creating the file."""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         write_header = not os.path.exists(path)
@@ -114,6 +132,7 @@ def _append_csv(path, row):
 
 
 def _format_row(reading):
+    """Format one sensor sample as a row matching the CSV schema."""
     return "%s,%.2f,%.3f,%.3f,%.1f" % (
         reading["timestamp"],
         reading["temperature_c"],
@@ -124,6 +143,7 @@ def _format_row(reading):
 
 
 def _format_display(reading):
+    """Format one sensor sample for the SharpCap conditions dialog."""
     return (
         "Observatory Conditions\n"
         "----------------------\n"
@@ -175,6 +195,7 @@ def conditions():
 # ---------------------------------------------------------------------------
 
 def _sampling_loop():
+    """Sample fresh readings and append them to repository and session CSVs."""
     import time
     _info("=" * 52)
     _info("Observatory Conditions Logger starting...")
