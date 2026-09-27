@@ -229,4 +229,4 @@ David González López-Tercero
 Copyright © 2026 David González López-Tercero.
 
 This project is licensed under the GNU General Public License v3.0 or later
-(GPL-3.0-or-later). See [LICENSE.txt](LICENSE.txt) for the full text.
+(GPL-3.0-or-later). See [LICENSE](LICENSE) for the full text.
